@@ -1,0 +1,5 @@
+# Certificados HTTPS locales
+*.pem
+.env
+/node_modules
+/dist
