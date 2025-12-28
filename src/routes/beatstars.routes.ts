@@ -1,38 +1,26 @@
-import express from "express";
-import multer from "multer";
-import "dotenv/config"; // carga automáticamente process.env
-import { asyncHandler, checkGraphQLErrors, errorHandler, extra_data_from_response, get_beatstars_token } from "./utils";
-import { api_error400, api_error500 } from "./errors";
-import { BeatStarsAssetFile, BeatStarsS3UploadMeta, BeatStarsTrack } from "./types";
+import express from 'express'
+import multer from 'multer';
+import { asyncHandler, checkGraphQLErrors, extra_data_from_response, get_beatstars_token } from "../utils";
+import { BeatStarsAssetFile, BeatStarsS3UploadMeta, BeatStarsTrack } from "../types";
+import { api_error400, api_error500 } from '../errors';
 
-const app = express();
+const bs_router = express.Router()
 
-app.use(express.json());
 const upload = multer({ storage: multer.memoryStorage() });
 
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok" });
-});
-
-
-app.get('/bs/login',
+bs_router.get('/bs/login',
   asyncHandler(
     async (_, res) => {
       res.json({ token: (await get_beatstars_token()) })
     }
   ))
 
-app.post('/bs/upload',
+bs_router.post('/bs/upload',
   upload.any(),
   asyncHandler(
     async (req, res) => {
       const file = (req.files as Express.Multer.File[])?.[0] ?? null
       if (file === null) api_error400('Invalid file')
-
-      // const asset_name: string = req.body.asset_name
-      // if (typeof asset_name !== 'string' || asset_name.length < 3) {
-      //   api_error400('Invalid asset_name')
-      // }
 
       const token = await get_beatstars_token()
 
@@ -140,7 +128,7 @@ app.post('/bs/upload',
 )
 
 
-app.post('/bs/publish',
+bs_router.post('/bs/publish',
   asyncHandler(
     async (req, res) => {
 
@@ -277,7 +265,3 @@ app.post('/bs/publish',
     }
   )
 )
-
-app.use(errorHandler);
-
-export default app;

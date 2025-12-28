@@ -1,6 +1,6 @@
 import https from "https";
 import fs from "fs";
-import app from "./app";
+import app from "./routes/app";
 
 const PORT = 3000;
 
