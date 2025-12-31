@@ -1,6 +1,7 @@
 import express from "express";
 import "dotenv/config"; // carga automáticamente process.env
 import { google_router } from "./google.routes";
+import { bs_router } from "./beatstars.routes";
 import { errorHandler } from "../utils";
 
 const app = express();
@@ -13,7 +14,8 @@ app.get("/health", (_req, res) => {
 
 
 
-app.use(google_router)
+app.use('/bs', bs_router)
+app.use('/google', google_router)
 app.use(errorHandler);
 
 export default app;

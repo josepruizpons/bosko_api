@@ -12,8 +12,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@types/fluent-ffmpeg": "^2.1.28",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "fluent-ffmpeg": "^2.1.3",
     "googleapis": "^169.0.0",
     "multer": "^2.0.2"
   },

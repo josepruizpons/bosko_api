@@ -4,18 +4,18 @@ import { asyncHandler, checkGraphQLErrors, extra_data_from_response, get_beatsta
 import { BeatStarsAssetFile, BeatStarsS3UploadMeta, BeatStarsTrack } from "../types";
 import { api_error400, api_error500 } from '../errors';
 
-const bs_router = express.Router()
+export const bs_router = express.Router()
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-bs_router.get('/bs/login',
+bs_router.get('/login',
   asyncHandler(
     async (_, res) => {
       res.json({ token: (await get_beatstars_token()) })
     }
   ))
 
-bs_router.post('/bs/upload',
+bs_router.post('/upload',
   upload.any(),
   asyncHandler(
     async (req, res) => {
@@ -128,7 +128,7 @@ bs_router.post('/bs/upload',
 )
 
 
-bs_router.post('/bs/publish',
+bs_router.post('/publish',
   asyncHandler(
     async (req, res) => {
 
