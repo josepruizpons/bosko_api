@@ -1,6 +1,6 @@
 import express from 'express'
 import multer from 'multer';
-import { asyncHandler, checkGraphQLErrors, extra_data_from_response, get_beatstars_token } from "../utils";
+import { asyncHandler, checkGraphQLErrors, extra_data_from_response, get_beatstars_token, sleep } from "../utils";
 import { BeatStarsAssetFile, BeatStarsS3UploadMeta, BeatStarsTrack } from "../types";
 import { api_error400, api_error500 } from '../errors';
 
@@ -20,8 +20,6 @@ bs_router.post('/upload',
   asyncHandler(
     async (req, res) => {
       const file = (req.files as Express.Multer.File[])?.[0] ?? null
-      if (file === null) api_error400('Invalid file')
-
       const token = await get_beatstars_token()
 
       const body = JSON.stringify({
@@ -29,7 +27,7 @@ bs_router.post('/upload',
         "variables": {
           "file": {
             "fileName": file.originalname,
-            "contentType": file.mimetype,
+            "contentType": 'audio/wave',
           }
         },
         "query": "mutation createAssetFile($file: FileUploadInput!) {\n  create(file: $file) {\n    id\n    assetStatus\n    created\n    expirationDate\n    file {\n      assetId\n      name\n      fullName\n      contentType\n      access\n      extension\n      type\n      url\n      size\n      universalFitInUrl\n      signedUrl\n      originalImageUrl\n      __typename\n    }\n    __typename\n  }\n}\n"
@@ -44,26 +42,23 @@ bs_router.post('/upload',
         },
         body,
       })
-
-      if (asset_file_response.status !== 200) {
-        const response = await asset_file_response.json()
-        console.log('asset_file_response')
-        api_error500(JSON.stringify(response))
-      }
       const asset_file_body: {
         data: {
           create: BeatStarsAssetFile
         }
       } = await asset_file_response.json()
+
+      const graphql_errors = checkGraphQLErrors(asset_file_body)
+      if (graphql_errors.hasErrors) {
+        console.log('asset_file_response')
+        api_error500(graphql_errors.messages.join(' | '));
+      }
       console.log(JSON.stringify(asset_file_body, null, 2))
       const asset_file = asset_file_body.data.create
-
-
 
       const params = new URLSearchParams({
         filename: file.originalname,
         type: asset_file.file.type,
-        // metadata tiene que codificarse con [ ] para que coincida con la API
         "metadata[asset-id]": asset_file.id,
         "metadata[name]": file.originalname,
         "metadata[type]": asset_file.file.type,
@@ -97,7 +92,7 @@ bs_router.post('/upload',
       formdata.append("x-amz-meta-asset-id", s3_upload_meta["x-amz-meta-asset-id"]);
       formdata.append("x-amz-meta-name", s3_upload_meta["x-amz-meta-name"]);
       formdata.append("x-amz-meta-type", s3_upload_meta["x-amz-meta-type"]);
-      formdata.append("x-amz-meta-content-type", file.mimetype);
+      formdata.append("x-amz-meta-content-type", s3_upload_meta['x-amz-meta-content-type']);
       formdata.append("x-amz-meta-version", s3_upload_meta["x-amz-meta-version"]);
       formdata.append("x-amz-meta-user", s3_upload_meta["x-amz-meta-user"]);
       formdata.append("x-amz-meta-env", s3_upload_meta["x-amz-meta-env"]);
@@ -109,7 +104,7 @@ bs_router.post('/upload',
       formdata.append("Policy", s3_upload_meta.Policy);
       formdata.append("X-Amz-Signature", s3_upload_meta["X-Amz-Signature"]);
 
-      const blob = new Blob([new Uint8Array(file.buffer)], { type: "audio/wav" });
+      const blob = new Blob([new Uint8Array(file.buffer)], { type: "audio/wave" });
       formdata.append("file", blob, s3_upload_meta["x-amz-meta-name"]);
 
       const upload_file_response = await fetch("https://s3.us-east-1.amazonaws.com/bts-content", {
@@ -118,6 +113,7 @@ bs_router.post('/upload',
       })
 
       console.log('upload_file_response')
+      console.log(await upload_file_response.text())
       if (upload_file_response.status !== 201) api_error500((await upload_file_response.text()))
 
       res.json({
@@ -197,7 +193,7 @@ bs_router.post('/publish',
           "id": id_track,
           "track": {
             "category": "BEAT",
-            "description": "bosko",
+            "description": "",
             "excludeFromBulkDiscounts": false,
             "metadata": {
               "tags": [
@@ -210,14 +206,14 @@ bs_router.post('/publish',
                 "AFROBEAT",
                 "AFROPOP"
               ],
-              "bpmDouble": 220,
+              "bpmDouble": "220",
               "instruments": [],
               "keyNote": "NONE",
               "moods": []
             },
-            "releaseDate": new Date().toISOString(),
+            "releaseDate": "2026-01-01T17:22:21.746Z",
             "thirdPartyLoopsAndSample": [],
-            "title": track_name,
+            "title": "traffic.mp3",
             "visibility": "PRIVATE",
             "boostCampaign": false,
             "freeDownloadSettings": {
@@ -237,6 +233,52 @@ bs_router.post('/publish',
         "query": "mutation PublishTrackForm($id: String!, $track: TrackInput!, $contracts: [ContractAttachmentInput], $contentId: PrePublishedContentIdTrackInput, $collaborations: [CollaborationInput], $dsps: [Long]) {\n  publishTrack(\n    id: $id\n    track: $track\n    contracts: $contracts\n    contentId: $contentId\n    collaborations: $collaborations\n    dsps: $dsps\n  ) {\n    ...trackForm\n    __typename\n  }\n}\n\nfragment trackForm on Track {\n  ...trackFormTrackDetails\n  freeDownloadSettings {\n    enabled\n    fileType\n    mode\n    socialPlatforms {\n      beatStars\n      twitter\n      soundCloud\n      __typename\n    }\n    __typename\n  }\n  contentIdByTrackId {\n    ...trackFormContentIdDetails\n    __typename\n  }\n  collaborations {\n    ...trackFormCollaboration\n    __typename\n  }\n  metadata {\n    ...trackFormMetadata\n    __typename\n  }\n  artwork {\n    ...trackFormArtwork\n    __typename\n  }\n  profile {\n    ...trackFormMemberProfile\n    __typename\n  }\n  bundle {\n    ...trackFormBundle\n    __typename\n  }\n  thirdPartyLoopsAndSample {\n    title\n    source\n    __typename\n  }\n  voloco {\n    ...exposedTrackVolocoConfiguration\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormTrackDetails on Track {\n  id\n  description\n  title\n  visibility\n  status\n  releaseDate\n  category\n  created\n  excludeFromBulkDiscounts\n  url\n  shareUrl\n  proPageUrl\n  proPageShareUrl\n  customStream\n  openAIGenerationCount\n  __typename\n}\n\nfragment trackFormContentIdDetails on ContentIdTrack {\n  id\n  title\n  dsps {\n    ...trackFormDsp\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormDsp on ContentIdDsp {\n  id\n  name\n  status\n  logo {\n    name\n    bucket\n    url\n    assetId\n    __typename\n  }\n  icon {\n    name\n    bucket\n    url\n    assetId\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormCollaboration on Collaboration {\n  profitShare\n  publishingShare\n  ugcShare\n  role\n  status\n  guestCollaborator {\n    ...trackFormGuestCollaborator\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormGuestCollaborator on Profile {\n  displayName\n  memberId\n  avatar {\n    sizes {\n      small\n      __typename\n    }\n    fitInUrl(width: 100, height: 100)\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormMetadata on Metadata {\n  tags\n  genres {\n    key\n    value\n    __typename\n  }\n  moods {\n    key\n    value\n    __typename\n  }\n  moodValence {\n    key\n    value\n    __typename\n  }\n  keyNote {\n    key\n    value\n    __typename\n  }\n  instrumentation {\n    key\n    value\n    __typename\n  }\n  instruments {\n    key\n    value\n    __typename\n  }\n  vocalPresence {\n    key\n    value\n    __typename\n  }\n  vocalGender {\n    key\n    value\n    __typename\n  }\n  energy {\n    key\n    value\n    __typename\n  }\n  energyVariation {\n    key\n    value\n    __typename\n  }\n  exclusive\n  free\n  bpmDouble\n  __typename\n}\n\nfragment trackFormArtwork on Image {\n  fitInUrl(width: 300, height: 300)\n  assetId\n  sizes {\n    small\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormMemberProfile on Profile {\n  username\n  memberId\n  avatar {\n    assetId\n    fitInUrl(width: 100, height: 100)\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormBundle on TrackBundle {\n  progress\n  error\n  errorPart\n  mainAudioFile {\n    ...trackFormAudioFile\n    __typename\n  }\n  stemsFile {\n    ...trackFormBinaryFile\n    __typename\n  }\n  stream {\n    ...trackFormAudioFile\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormAudioFile on Audio {\n  duration\n  extension\n  encode\n  assetId\n  name\n  fullName\n  url\n  type\n  signedUrl\n  size\n  __typename\n}\n\nfragment trackFormBinaryFile on Binary {\n  extension\n  assetId\n  name\n  fullName\n  url\n  type\n  signedUrl\n  size\n  contentType\n  __typename\n}\n\nfragment exposedTrackVolocoConfiguration on ExposedTrackVolocoConfiguration {\n  contentSharing {\n    existsInVoloco\n    optOut\n    __typename\n  }\n  __typename\n}\n"
       });
 
+      //NOTE: Check if audio is attached successfully -> bundle != null
+
+      let has_bundle = false
+      // NOTE: 60 retries to have a timeout of 1min aprox
+      for (let retries = 60; retries > 0 && !has_bundle; retries--) {
+        await sleep(5000)
+        const check_track_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=GetTrack", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            "operationName": "GetTrack",
+            "variables": {
+              "id": id_track
+            },
+            "query": "query GetTrack($id: String!) {\n  member {\n    id\n    inventory {\n      track(id: $id) {\n        ...trackForm\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n}\n\nfragment trackForm on Track {\n  ...trackFormTrackDetails\n  freeDownloadSettings {\n    enabled\n    fileType\n    mode\n    socialPlatforms {\n      beatStars\n      twitter\n      soundCloud\n      __typename\n    }\n    __typename\n  }\n  contentIdByTrackId {\n    ...trackFormContentIdDetails\n    __typename\n  }\n  collaborations {\n    ...trackFormCollaboration\n    __typename\n  }\n  metadata {\n    ...trackFormMetadata\n    __typename\n  }\n  artwork {\n    ...trackFormArtwork\n    __typename\n  }\n  profile {\n    ...trackFormMemberProfile\n    __typename\n  }\n  bundle {\n    ...trackFormBundle\n    __typename\n  }\n  thirdPartyLoopsAndSample {\n    title\n    source\n    __typename\n  }\n  voloco {\n    ...exposedTrackVolocoConfiguration\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormTrackDetails on Track {\n  id\n  description\n  title\n  visibility\n  status\n  releaseDate\n  category\n  created\n  excludeFromBulkDiscounts\n  url\n  shareUrl\n  proPageUrl\n  proPageShareUrl\n  customStream\n  openAIGenerationCount\n  __typename\n}\n\nfragment trackFormContentIdDetails on ContentIdTrack {\n  id\n  title\n  dsps {\n    ...trackFormDsp\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormDsp on ContentIdDsp {\n  id\n  name\n  status\n  logo {\n    name\n    bucket\n    url\n    assetId\n    __typename\n  }\n  icon {\n    name\n    bucket\n    url\n    assetId\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormCollaboration on Collaboration {\n  profitShare\n  publishingShare\n  ugcShare\n  role\n  status\n  guestCollaborator {\n    ...trackFormGuestCollaborator\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormGuestCollaborator on Profile {\n  displayName\n  memberId\n  avatar {\n    sizes {\n      small\n      __typename\n    }\n    fitInUrl(width: 100, height: 100)\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormMetadata on Metadata {\n  tags\n  genres {\n    key\n    value\n    __typename\n  }\n  moods {\n    key\n    value\n    __typename\n  }\n  moodValence {\n    key\n    value\n    __typename\n  }\n  keyNote {\n    key\n    value\n    __typename\n  }\n  instrumentation {\n    key\n    value\n    __typename\n  }\n  instruments {\n    key\n    value\n    __typename\n  }\n  vocalPresence {\n    key\n    value\n    __typename\n  }\n  vocalGender {\n    key\n    value\n    __typename\n  }\n  energy {\n    key\n    value\n    __typename\n  }\n  energyVariation {\n    key\n    value\n    __typename\n  }\n  exclusive\n  free\n  bpmDouble\n  __typename\n}\n\nfragment trackFormArtwork on Image {\n  fitInUrl(width: 300, height: 300)\n  assetId\n  sizes {\n    small\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormMemberProfile on Profile {\n  username\n  memberId\n  avatar {\n    assetId\n    fitInUrl(width: 100, height: 100)\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormBundle on TrackBundle {\n  progress\n  error\n  errorPart\n  mainAudioFile {\n    ...trackFormAudioFile\n    __typename\n  }\n  stemsFile {\n    ...trackFormBinaryFile\n    __typename\n  }\n  stream {\n    ...trackFormAudioFile\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormAudioFile on Audio {\n  duration\n  extension\n  encode\n  assetId\n  name\n  fullName\n  url\n  type\n  signedUrl\n  size\n  __typename\n}\n\nfragment trackFormBinaryFile on Binary {\n  extension\n  assetId\n  name\n  fullName\n  url\n  type\n  signedUrl\n  size\n  contentType\n  __typename\n}\n\nfragment exposedTrackVolocoConfiguration on ExposedTrackVolocoConfiguration {\n  contentSharing {\n    existsInVoloco\n    optOut\n    __typename\n  }\n  __typename\n}\n"
+          }),
+          redirect: "follow"
+        })
+
+        const check_track_body: {
+          data: {
+            member: {
+              inventory: {
+                track: {
+                  bundle: { progress: string } | null
+                }
+              }
+            }
+          }
+        } = await check_track_response.json()
+        const check_track_graphql_errors = checkGraphQLErrors(check_track_body)
+
+        console.log({check_track_body: JSON.stringify(check_track_body, null, 2)})
+
+        if (check_track_graphql_errors.hasErrors) {
+          api_error500(check_track_graphql_errors.messages.join(' - '))
+          return
+        }
+
+        const bundle = check_track_body.data.member.inventory.track.bundle
+        has_bundle = bundle !== null && bundle.progress === 'COMPLETE'
+      }
+
+      if (has_bundle === false) {
+        api_error500('Attach timeout')
+      }
 
       const publish_track_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=PublishTrackForm", {
         method: "POST",
@@ -253,14 +295,18 @@ bs_router.post('/publish',
       } = await publish_track_response.json();
 
       const graphql_errors = checkGraphQLErrors(publish_track_body)
-      if (graphql_errors.hasErrors) {
-        api_error500(graphql_errors.messages.join(' | '));
+      if (
+        graphql_errors.hasErrors
+        || !publish_track_body.data?.publishTrack?.shareUrl
+      ) {
+        api_error500('Unable to publish')
+        return
       }
 
       res.json({
         id_asset,
         id_track,
-        share_link: publish_track_body.data?.publishTrack?.shareUrl,
+        share_link: publish_track_body.data.publishTrack.shareUrl,
       })
     }
   )

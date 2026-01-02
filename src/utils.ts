@@ -116,8 +116,14 @@ export async function generate_video(audioBuffer: Buffer, imageBuffer: Buffer): 
       .videoCodec('libx264')
       .audioCodec('aac')
       .audioBitrate('192k')
-      .outputOptions(['-tune stillimage', '-shortest', '-pix_fmt yuv420p'])
-      .size('1280x720')
+     .outputOptions([
+        '-tune stillimage',
+        '-shortest',
+        '-pix_fmt yuv420p',
+        // Escala manteniendo la proporción y agrega bandas negras si es necesario
+        '-vf scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black'
+      ])
+      .size('1920x1080')
       .save(outputPath)
       .on('end', () => resolve())
       .on('error', (err) => reject(err))
@@ -131,3 +137,4 @@ export async function generate_video(audioBuffer: Buffer, imageBuffer: Buffer): 
 
   return buffer
 }
+export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
