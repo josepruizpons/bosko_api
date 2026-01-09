@@ -236,7 +236,7 @@ bs_router.post('/publish',
       //NOTE: Check if audio is attached successfully -> bundle != null
 
       let has_bundle = false
-      for (let retries = 3; retries > 0 && !has_bundle; retries--) {
+      for (let retries = 60; retries > 0 && !has_bundle; retries--) {
         await sleep(5000)
         const check_track_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=GetTrack", {
           method: "POST",
@@ -272,6 +272,10 @@ bs_router.post('/publish',
         }
 
         const bundle = check_track_body.data.member.inventory.track.bundle
+        if(bundle !== null && bundle.progress === 'ERROR') {
+          api_error500('File audio error')
+        }
+
         has_bundle = bundle !== null && bundle.progress === 'COMPLETE'
       }
 
