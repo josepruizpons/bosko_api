@@ -8,10 +8,11 @@ import { errorHandler } from "../utils";
 const app = express();
 
 
-app.use(cors({
-  origin: "http://localhost:5173", // Vite
-  credentials: true
-}))
+const allowedOrigins = process.env.NODE_ENV === "production"
+  ? ["https://bosko-9p6c.onrender.com"]
+  : ["http://localhost:5173"];
+
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 
 app.get("/health", (_req, res) => {
