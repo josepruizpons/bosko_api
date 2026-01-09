@@ -2,14 +2,19 @@ import https from "https";
 import fs from "fs";
 import app from "./routes/app";
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
-https.createServer(
-  {
-    key: fs.readFileSync("localhost-key.pem"),
-    cert: fs.readFileSync("localhost.pem"),
-  },
-  app
-).listen(PORT, () => {
-  console.log(`🔐 HTTPS activo en https://localhost:${PORT}`);
-});
+if (process.env.NODE_ENV === "production") {
+  // En producción usamos HTTP normal (Render ya maneja HTTPS)
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+} else {
+  // En local usamos HTTPS con certificados auto-firmados
+  const key = fs.readFileSync("localhost-key.pem");
+  const cert = fs.readFileSync("localhost.pem");
+
+  https.createServer({ key, cert }, app).listen(PORT, () => {
+    console.log(`Server running on https://localhost:${PORT}`);
+  });
+}
