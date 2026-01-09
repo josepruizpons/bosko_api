@@ -236,8 +236,7 @@ bs_router.post('/publish',
       //NOTE: Check if audio is attached successfully -> bundle != null
 
       let has_bundle = false
-      // NOTE: 60 retries to have a timeout of 1min aprox
-      for (let retries = 60; retries > 0 && !has_bundle; retries--) {
+      for (let retries = 3; retries > 0 && !has_bundle; retries--) {
         await sleep(5000)
         const check_track_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=GetTrack", {
           method: "POST",
