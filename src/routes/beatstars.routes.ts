@@ -1,12 +1,11 @@
 import express from 'express'
 import multer from 'multer';
 import { asyncHandler, checkGraphQLErrors, extra_data_from_response, get_beatstars_token, sleep } from "../utils";
-import { BeatStarsAssetFile, BeatStarsS3UploadMeta, BeatStarsTrack } from "../types";
+import { BeatStarsTrack } from "../types";
 import { api_error400, api_error500 } from '../errors';
 
 export const bs_router = express.Router()
 
-const upload = multer({ storage: multer.memoryStorage() });
 
 bs_router.get('/login',
   asyncHandler(
@@ -15,113 +14,147 @@ bs_router.get('/login',
     }
   ))
 
-bs_router.post('/upload',
-  upload.any(),
-  asyncHandler(
-    async (req, res) => {
-      const file = (req.files as Express.Multer.File[])?.[0] ?? null
-      const token = await get_beatstars_token()
 
-      const body = JSON.stringify({
-        "operationName": "createAssetFile",
-        "variables": {
-          "file": {
-            "fileName": file.originalname,
-            "contentType": 'audio/wave',
-          }
-        },
-        "query": "mutation createAssetFile($file: FileUploadInput!) {\n  create(file: $file) {\n    id\n    assetStatus\n    created\n    expirationDate\n    file {\n      assetId\n      name\n      fullName\n      contentType\n      access\n      extension\n      type\n      url\n      size\n      universalFitInUrl\n      signedUrl\n      originalImageUrl\n      __typename\n    }\n    __typename\n  }\n}\n"
-      });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 1024 * 1024 * 500 // 500MB (ajusta si quieres)
+  }
+});
 
+bs_router.post(
+  '/upload',
+  upload.single('file'),
+  asyncHandler(async (req, res) => {
 
-      const asset_file_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=createAssetFile", {
+    const file = req.file;
+    if (!file || !file.buffer || file.size === 0) {
+      api_error400('Invalid audio file');
+      return;
+    }
+
+    console.log({mimetype: file.mimetype, extension: file.originalname})
+
+    // sanity check
+    if (file.buffer.length !== file.size) {
+      api_error500('Corrupted upload buffer');
+      return;
+    }
+
+    const token = await get_beatstars_token();
+
+    /* --------------------------------------------------
+       1) CREATE ASSET FILE (GraphQL)
+    -------------------------------------------------- */
+
+    const createAssetResponse = await fetch(
+      "https://core.prod.beatstars.net/studio/graphql?op=createAssetFile",
+      {
         method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
         },
-        body,
-      })
-      const asset_file_body: {
-        data: {
-          create: BeatStarsAssetFile
-        }
-      } = await asset_file_response.json()
-
-      const graphql_errors = checkGraphQLErrors(asset_file_body)
-      if (graphql_errors.hasErrors) {
-        console.log('asset_file_response')
-        api_error500(graphql_errors.messages.join(' | '));
+        body: JSON.stringify({
+          operationName: "createAssetFile",
+          variables: {
+            file: {
+              fileName: file.originalname,
+              contentType: file.mimetype
+            }
+          },
+          query: `
+            mutation createAssetFile($file: FileUploadInput!) {
+              create(file: $file) {
+                id
+                expirationDate
+                file {
+                  type
+                  contentType
+                }
+              }
+            }
+          `
+        })
       }
-      console.log(JSON.stringify(asset_file_body, null, 2))
-      const asset_file = asset_file_body.data.create
+    );
 
-      const params = new URLSearchParams({
-        filename: file.originalname,
-        type: asset_file.file.type,
-        "metadata[asset-id]": asset_file.id,
-        "metadata[name]": file.originalname,
-        "metadata[type]": asset_file.file.type,
-        "metadata[content-type]": asset_file.file.contentType,
-        "metadata[version]": '2',
-        "metadata[user]": process.env.BS_USER_ID ?? '',
-        "metadata[env]": "prod",
-      });
-
-      const url = `https://uppy.beatstars.net/s3/params?${params.toString()}`;
-
-      const s3_upload_response = await fetch(url)
-      if (s3_upload_response.status !== 200) {
-        const response = await s3_upload_response.json()
-        console.log('s3_upload_response')
-        api_error500(JSON.stringify(response))
-      }
-
-      const s3_upload_body: {
-        method: 'post';
-        url: string;
-        fields: BeatStarsS3UploadMeta;
-      } = await s3_upload_response.json()
-      const s3_upload_meta = s3_upload_body.fields
-
-      const formdata = new FormData();
-      formdata.append("acl", s3_upload_meta.acl);
-      formdata.append("key", s3_upload_meta.key);
-      formdata.append("success_action_status", s3_upload_meta.success_action_status);
-      formdata.append("content-type", s3_upload_meta["content-type"]);
-      formdata.append("x-amz-meta-asset-id", s3_upload_meta["x-amz-meta-asset-id"]);
-      formdata.append("x-amz-meta-name", s3_upload_meta["x-amz-meta-name"]);
-      formdata.append("x-amz-meta-type", s3_upload_meta["x-amz-meta-type"]);
-      formdata.append("x-amz-meta-content-type", s3_upload_meta['x-amz-meta-content-type']);
-      formdata.append("x-amz-meta-version", s3_upload_meta["x-amz-meta-version"]);
-      formdata.append("x-amz-meta-user", s3_upload_meta["x-amz-meta-user"]);
-      formdata.append("x-amz-meta-env", s3_upload_meta["x-amz-meta-env"]);
-      formdata.append("bucket", s3_upload_meta.bucket);
-      formdata.append("X-Amz-Algorithm", s3_upload_meta["X-Amz-Algorithm"]);
-      formdata.append("X-Amz-Credential", s3_upload_meta["X-Amz-Credential"]);
-      formdata.append("X-Amz-Date", s3_upload_meta["X-Amz-Date"]);
-      formdata.append("X-Amz-Security-Token", s3_upload_meta["X-Amz-Security-Token"]);
-      formdata.append("Policy", s3_upload_meta.Policy);
-      formdata.append("X-Amz-Signature", s3_upload_meta["X-Amz-Signature"]);
-
-      const blob = new Blob([new Uint8Array(file.buffer)], { type: "audio/wave" });
-      formdata.append("file", blob, s3_upload_meta["x-amz-meta-name"]);
-
-      const upload_file_response = await fetch("https://s3.us-east-1.amazonaws.com/bts-content", {
-        method: "POST",
-        body: formdata,
-      })
-
-      console.log('upload_file_response')
-      console.log(await upload_file_response.text())
-      if (upload_file_response.status !== 201) api_error500((await upload_file_response.text()))
-
-      res.json({
-        asset_file
-      })
+    const assetBody = await createAssetResponse.json();
+    console.log((JSON.stringify(assetBody, null, 2)))
+    const assetErrors = checkGraphQLErrors(assetBody);
+    if (assetErrors.hasErrors) {
+      api_error500(assetErrors.messages.join(' | '));
+      return;
     }
-  )
-)
+
+    const asset = assetBody.data.create;
+
+    /* --------------------------------------------------
+       2) GET S3 SIGNED PARAMS
+    -------------------------------------------------- */
+
+    const params = new URLSearchParams({
+      filename: file.originalname,
+      type: asset.file.type,
+      "metadata[asset-id]": asset.id,
+      "metadata[name]": file.originalname,
+      "metadata[type]": asset.file.type,
+      "metadata[content-type]": file.mimetype,
+      "metadata[version]": "2",
+      "metadata[user]": process.env.BS_USER_ID ?? "",
+      "metadata[env]": "prod"
+    });
+
+    const s3ParamsRes = await fetch(
+      `https://uppy.beatstars.net/s3/params?${params.toString()}`
+    );
+
+    if (s3ParamsRes.status !== 200) {
+      api_error500('Unable to get S3 params');
+      return;
+    }
+
+    const { url, fields } = await s3ParamsRes.json();
+
+    console.log({url, fields: JSON.stringify(fields, null, 2)})
+
+    /* --------------------------------------------------
+       3) UPLOAD TO S3 (USAR URL EXACTA)
+    -------------------------------------------------- */
+
+    const form = new FormData();
+
+    Object.entries(fields).forEach(([key, value]) => {
+      form.append(key, value as string);
+    });
+
+    const arrayBuffer = Uint8Array.from(file.buffer).buffer;
+
+    const blob = new Blob([arrayBuffer], { type: file.mimetype });
+    form.append("file", blob, fields["x-amz-meta-name"]);
+
+    const s3UploadRes = await fetch(url, {
+      method: "POST",
+      body: form
+    });
+
+    if (s3UploadRes.status !== 201) {
+      const text = await s3UploadRes.text();
+      console.log({text: JSON.stringify(text, null, 2)})
+      api_error500(`S3 upload failed: ${text}`);
+      return;
+    }
+
+    /* --------------------------------------------------
+       DONE
+    -------------------------------------------------- */
+
+    res.json({
+      assetId: asset.id,
+      status: "UPLOADED"
+    });
+  })
+);
 
 
 bs_router.post('/publish',
@@ -187,6 +220,7 @@ bs_router.post('/publish',
         api_error500((await extra_data_from_response(add_track_response)))
       }
 
+
       const raw = JSON.stringify({
         "operationName": "PublishTrackForm",
         "variables": {
@@ -211,9 +245,9 @@ bs_router.post('/publish',
               "keyNote": "NONE",
               "moods": []
             },
-            "releaseDate": "2026-01-01T17:22:21.746Z",
+            "releaseDate": "2026-01-10T17:02:21.746Z",
             "thirdPartyLoopsAndSample": [],
-            "title": "traffic.mp3",
+            "title": "api test",
             "visibility": "PRIVATE",
             "boostCampaign": false,
             "freeDownloadSettings": {
@@ -236,7 +270,7 @@ bs_router.post('/publish',
       //NOTE: Check if audio is attached successfully -> bundle != null
 
       let has_bundle = false
-      for (let retries = 60; retries > 0 && !has_bundle; retries--) {
+      for (let retries = 1; retries > 0 && !has_bundle; retries--) {
         await sleep(5000)
         const check_track_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=GetTrack", {
           method: "POST",
@@ -264,7 +298,7 @@ bs_router.post('/publish',
         } = await check_track_response.json()
         const check_track_graphql_errors = checkGraphQLErrors(check_track_body)
 
-        console.log({check_track_body: JSON.stringify(check_track_body, null, 2)})
+        console.log({ check_track_body: JSON.stringify(check_track_body, null, 2) })
 
         if (check_track_graphql_errors.hasErrors) {
           api_error500(check_track_graphql_errors.messages.join(' - '))
@@ -272,17 +306,17 @@ bs_router.post('/publish',
         }
 
         const bundle = check_track_body.data.member.inventory.track.bundle
-        if(bundle !== null && bundle.progress === 'ERROR') {
+        if (bundle !== null && bundle.progress === 'ERROR') {
           api_error500('File audio error')
         }
 
         has_bundle = bundle !== null && bundle.progress === 'COMPLETE'
       }
 
-      if (has_bundle === false) {
-        api_error500('Attach timeout')
-      }
-
+      // if (has_bundle === false) {
+      //   api_error500('Attach timeout')
+      // }
+      //
       const publish_track_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=PublishTrackForm", {
         method: "POST",
         headers,
@@ -302,7 +336,8 @@ bs_router.post('/publish',
         graphql_errors.hasErrors
         || !publish_track_body.data?.publishTrack?.shareUrl
       ) {
-        api_error500('Unable to publish')
+        console.log({publish_errors: JSON.stringify(publish_track_body, null, 2)})
+        api_error500(graphql_errors.messages.join(', '))
         return
       }
 
