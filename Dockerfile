@@ -1,21 +1,26 @@
-# Usamos Node 20 como base
+# Imagen base con Node
 FROM node:20
 
-# Instalar FFmpeg y dependencias del sistema
+# Instalar ffmpeg
 RUN apt-get update && apt-get install -y ffmpeg && apt-get clean
 
 # Crear directorio de trabajo
 WORKDIR /app
 
-# Copiar package.json e instalar dependencias
+# Copiar package.json y package-lock.json (si existe)
 COPY package*.json ./
-RUN npm install --production
 
-# Copiar el resto del proyecto
+# Instalar dependencias
+RUN npm install
+
+# Copiar el resto del código
 COPY . .
 
-# Exponer el puerto que tu app usa (ej. 3000)
+# Compilar TypeScript
+RUN npm run build
+
+# Puerto de la app
 EXPOSE 3000
 
-# Comando para iniciar tu app
-CMD ["node", "index.js"]
+# Comando para arrancar la app
+CMD ["node", "dist/index.js"]
