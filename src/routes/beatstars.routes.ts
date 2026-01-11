@@ -33,8 +33,12 @@ bs_router.post(
       return;
     }
 
-    console.log({mimetype: file.mimetype, extension: file.originalname})
+    const mimetype = {
+      'wav': 'audio/wav',
+      'mp3': 'audio/mpeg'
+    }[file.originalname.split('.')[1]] ?? 'audio/wav' // TODO: improve
 
+    console.log({mimetype, extension: file.originalname})
     // sanity check
     if (file.buffer.length !== file.size) {
       api_error500('Corrupted upload buffer');
@@ -60,7 +64,7 @@ bs_router.post(
           variables: {
             file: {
               fileName: file.originalname,
-              contentType: file.mimetype
+              contentType: mimetype
             }
           },
           query: `
@@ -99,7 +103,7 @@ bs_router.post(
       "metadata[asset-id]": asset.id,
       "metadata[name]": file.originalname,
       "metadata[type]": asset.file.type,
-      "metadata[content-type]": file.mimetype,
+      "metadata[content-type]": mimetype,
       "metadata[version]": "2",
       "metadata[user]": process.env.BS_USER_ID ?? "",
       "metadata[env]": "prod"
@@ -130,7 +134,7 @@ bs_router.post(
 
     const arrayBuffer = Uint8Array.from(file.buffer).buffer;
 
-    const blob = new Blob([arrayBuffer], { type: file.mimetype });
+    const blob = new Blob([arrayBuffer], { type: mimetype });
     form.append("file", blob, fields["x-amz-meta-name"]);
 
     const s3UploadRes = await fetch(url, {
