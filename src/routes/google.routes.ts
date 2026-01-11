@@ -2,7 +2,7 @@ import express from 'express'
 import { google } from 'googleapis';
 import { api_error400 } from '../errors';
 import multer from 'multer'
-import { buffer_to_stream, generate_video } from '../utils';
+import { generate_video } from '../utils';
 import { oauth2Client } from '../google_auth';
 
 
@@ -58,8 +58,7 @@ google_router.post(
       const files = req.files as { [fieldname: string]: Express.Multer.File[] }
       const bs_url: string = req.body.bs_url
 
-      if(typeof bs_url !== 'string') api_error400('Invalid bs_url')
-
+      if (typeof bs_url !== 'string') return api_error400('Invalid bs_url')
       if (!files || !files['audio'] || !files['thumbnail']) {
         return res.status(400).json({ success: false, message: 'Faltan archivos' })
       }
@@ -67,20 +66,20 @@ google_router.post(
       const audioBuffer = files['audio'][0].buffer
       const thumbBuffer = files['thumbnail'][0].buffer
 
-      // Generar video
-      const videoBuffer = await generate_video(audioBuffer, thumbBuffer)
-      console.log({creds:oauth2Client.credentials})
+      // Generar video como stream
+      const videoStream = await generate_video(audioBuffer, thumbBuffer)
+
+      console.log('video generated')
 
       // Subir a YouTube
       const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
-
       const response = await youtube.videos.insert({
         part: ['snippet', 'status'],
         requestBody: {
           snippet: { title: 'bosko v1', description: `Beatstars: ${bs_url}` },
           status: { privacyStatus: 'private' },
         },
-        media: { body: buffer_to_stream(videoBuffer) },
+        media: { body: videoStream },
       })
 
       res.json({ success: true, videoId: response.data.id })
