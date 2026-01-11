@@ -348,7 +348,7 @@ bs_router.post('/publish',
       res.json({
         id_asset,
         id_track,
-        share_link: publish_track_body.data.publishTrack.shareUrl,
+        share_link: publish_track_body.data.publishTrack.url,
       })
     }
   )
