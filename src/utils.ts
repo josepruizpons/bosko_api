@@ -1,4 +1,6 @@
+import fs from 'fs'
 import ffmpeg from 'fluent-ffmpeg'
+import path from 'path'
 import { ErrorRequestHandler, NextFunction, Request, RequestHandler, Response as ExpressResponse } from "express";
 import { api_error500, ApiError } from "./errors";
 import { BeatStarsLoginResponse, GraphQLResponse } from "./types";
@@ -87,52 +89,52 @@ export function checkGraphQLErrors(response: GraphQLResponse): { hasErrors: bool
   return result;
 }
 
-export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-import { PassThrough, Readable } from 'stream'
-
-
-// Convierte Buffer a Readable stream
-function bufferToStream(buffer: Buffer) {
-  const stream = new Readable({
-    read() {
-      this.push(buffer)
-      this.push(null)
-    }
-  })
+export function buffer_to_stream(buffer: Buffer) {
+  const { Readable } = require('stream')
+  const stream = new Readable()
+  stream.push(buffer)
+  stream.push(null)
   return stream
 }
 
-/**
- * Genera un video en memoria como Readable stream
- */
-export function generate_video(audioBuffer: Buffer, imageBuffer: Buffer): Promise<Readable> {
-  return new Promise((resolve, reject) => {
-    const audioStream = bufferToStream(audioBuffer)
-    const imageStream = bufferToStream(imageBuffer)
+export async function generate_video(audioBuffer: Buffer, imageBuffer: Buffer): Promise<Buffer> {
+  const tempDir = 'temp'
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir)
 
-    const outputStream = new PassThrough() // Stream final para ffmpeg
+  const audioPath = path.join(tempDir, `audio-${Date.now()}.mp3`)
+  const imagePath = path.join(tempDir, `thumb-${Date.now()}.jpg`)
+  const outputPath = path.join(tempDir, `video-${Date.now()}.mp4`)
 
+  fs.writeFileSync(audioPath, audioBuffer)
+  fs.writeFileSync(imagePath, imageBuffer)
+
+  await new Promise<void>((resolve, reject) => {
     ffmpeg()
-      .input(imageStream)
+      .input(imagePath)
       .inputOptions(['-loop 1'])
-      .inputFormat('image2pipe')
-      .input(audioStream)
-      .inputFormat('mp3') // ajusta si tu audio es wav
+      .input(audioPath)
       .videoCodec('libx264')
       .audioCodec('aac')
       .audioBitrate('192k')
-      .outputOptions([
+     .outputOptions([
         '-tune stillimage',
         '-shortest',
         '-pix_fmt yuv420p',
-        '-vf scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=black'
+        // Escala manteniendo la proporción y agrega bandas negras si es necesario
+        '-vf scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black'
       ])
-      .format('mp4')
+      .size('1920x1080')
+      .save(outputPath)
+      .on('end', () => resolve())
       .on('error', (err) => reject(err))
-      .on('end', () => console.log('Video generado'))
-      .pipe(outputStream) // IMPORTANTE: pipe directo a PassThrough
-
-    resolve(outputStream)
   })
+
+  const buffer = fs.readFileSync(outputPath)
+
+  fs.unlinkSync(audioPath)
+  fs.unlinkSync(imagePath)
+  fs.unlinkSync(outputPath)
+
+  return buffer
 }
+export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
