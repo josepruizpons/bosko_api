@@ -249,9 +249,9 @@ bs_router.post('/publish',
               "keyNote": "NONE",
               "moods": []
             },
-            "releaseDate": "2026-01-10T17:02:21.746Z",
+            "releaseDate": "2026-01-11T17:02:21.746Z",
             "thirdPartyLoopsAndSample": [],
-            "title": "api test",
+            "title": track_name,
             "visibility": "PRIVATE",
             "boostCampaign": false,
             "freeDownloadSettings": {

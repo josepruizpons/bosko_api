@@ -57,8 +57,10 @@ google_router.post(
     try {
       const files = req.files as { [fieldname: string]: Express.Multer.File[] }
       const bs_url: string = req.body.bs_url
+      const name: string = req.body.name
 
       if(typeof bs_url !== 'string') api_error400('Invalid bs_url')
+      if(typeof name !== 'string') api_error400('Invalid name')
 
       if (!files || !files['audio'] || !files['thumbnail']) {
         return res.status(400).json({ success: false, message: 'Faltan archivos' })
@@ -69,7 +71,7 @@ google_router.post(
 
       // Generar video
       const videoBuffer = await generate_video(audioBuffer, thumbBuffer)
-      console.log({creds:oauth2Client.credentials})
+      console.log('Video generated: ' + name )
 
       // Subir a YouTube
       const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
@@ -77,7 +79,13 @@ google_router.post(
       const response = await youtube.videos.insert({
         part: ['snippet', 'status'],
         requestBody: {
-          snippet: { title: 'bosko v1', description: `Beatstars: ${bs_url}` },
+          snippet: { title: name,
+            description: `get your license: ${bs_url}
+
+
+
+If you want to make profit with your music (upload your song to streaming services for example), you must purchase a license that is suitable for yourself before releasing your song. Regardless if you've purchased a license or not, you can't register your song on BMI/ASCAP/WIPO/OMPI or any worldwide copyright organization or any other Content ID system unless you have acquired an Exclusive license.`
+          },
           status: { privacyStatus: 'private' },
         },
         media: { body: buffer_to_stream(videoBuffer) },
