@@ -29,16 +29,15 @@ bs_router.post(
 
     const file = req.file;
     if (!file || !file.buffer || file.size === 0) {
-      api_error400('Invalid audio file');
+      api_error400('Invalid file');
       return;
     }
 
     const mimetype = {
-      'wav': 'audio/wav',
-      'mp3': 'audio/mpeg'
-    }[file.originalname.split('.')[1]] ?? 'audio/wav' // TODO: improve
+      'audio/vnd.wave': 'audio/wav',
+    }[file.mimetype] ?? file.mimetype
+    console.log({ original_mimetype: file.mimetype, mimetype, extension: file.originalname })
 
-    console.log({mimetype, extension: file.originalname})
     // sanity check
     if (file.buffer.length !== file.size) {
       api_error500('Corrupted upload buffer');
@@ -48,7 +47,7 @@ bs_router.post(
     const token = await get_beatstars_token();
 
     const beatstars_slug = beatstarsSlug(file.originalname)
-    console.log({beatstars_slug})
+    console.log({ beatstars_slug })
 
     /* --------------------------------------------------
        1) CREATE ASSET FILE (GraphQL)
@@ -113,17 +112,18 @@ bs_router.post(
     });
 
     const s3ParamsRes = await fetch(
-      `https://uppy.beatstars.net/s3/params?${params.toString()}`
+      `https://uppy-v4.beatstars.net/s3/params?${params.toString()}`
     );
 
     if (s3ParamsRes.status !== 200) {
+      console.log(await s3ParamsRes.text())
       api_error500('Unable to get S3 params');
       return;
     }
 
     const { url, fields } = await s3ParamsRes.json();
 
-    console.log({url, fields: JSON.stringify(fields, null, 2)})
+    console.log({ url, fields: JSON.stringify(fields, null, 2) })
 
     /* --------------------------------------------------
        3) UPLOAD TO S3 (USAR URL EXACTA)
@@ -145,9 +145,9 @@ bs_router.post(
       body: form
     });
 
+    const text = await s3UploadRes.text();
+    console.log({ text: JSON.stringify(text, null, 2) })
     if (s3UploadRes.status !== 201) {
-      const text = await s3UploadRes.text();
-      console.log({text: JSON.stringify(text, null, 2)})
       api_error500(`S3 upload failed: ${text}`);
       return;
     }
@@ -169,11 +169,13 @@ bs_router.post('/publish',
     async (req, res) => {
 
       const track_name: string = req.body.name
-      const id_asset: string = req.body.id_asset
+      const beat_id_asset: string = req.body.beat_id_asset
+      const thumbnail_id_asset: string = req.body.thumbnail_id_asset
 
       if (
         typeof track_name !== 'string'
-        || typeof id_asset !== 'string'
+        || typeof thumbnail_id_asset !== 'string'
+        || typeof beat_id_asset !== 'string'
       ) api_error400()
 
       const token = await get_beatstars_token()
@@ -217,14 +219,28 @@ bs_router.post('/publish',
           "operationName": "attachMainAudio",
           "variables": {
             "id": id_track,
-            "assetId": id_asset,
+            "assetId": beat_id_asset,
           },
           "query": "mutation attachMainAudio($id: String!, $assetId: String!) {\n  attachMainAudioFile(id: $id, assetId: $assetId, encodeRelatedFiles: false)\n}\n"
         }),
       })
 
       if (attach_audio_response.status !== 200) {
-        api_error500((await extra_data_from_response(add_track_response)))
+        api_error500((await extra_data_from_response(attach_audio_response)))
+      }
+
+      const attach_thumbnail_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=trackFormAttachArtwork", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          "operationName": "trackFormAttachArtwork",
+          "variables": { "itemId": id_track, "assetId": thumbnail_id_asset },
+          "query": "mutation trackFormAttachArtwork($itemId: String!, $assetId: String!) {\n  attachArtwork(itemId: $itemId, assetId: $assetId)\n}"
+        }),
+      })
+
+      if (attach_thumbnail_response.status !== 200) {
+        api_error500((await extra_data_from_response(attach_thumbnail_response)))
       }
 
 
@@ -337,19 +353,20 @@ bs_router.post('/publish',
         };
         errors?: any[];
       } = await publish_track_response.json();
+      console.log({ publish_track_body: JSON.stringify(publish_track_body, null, 2) })
 
       const graphql_errors = checkGraphQLErrors(publish_track_body)
       if (
         graphql_errors.hasErrors
         || !publish_track_body.data?.publishTrack?.shareUrl
       ) {
-        console.log({publish_errors: JSON.stringify(publish_track_body, null, 2)})
+        console.log({ publish_errors: JSON.stringify(publish_track_body, null, 2) })
         api_error500(graphql_errors.messages.join(', '))
         return
       }
 
       res.json({
-        id_asset,
+        id_asset: beat_id_asset,
         id_track,
         share_link: publish_track_body.data.publishTrack.url,
       })
