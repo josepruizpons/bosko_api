@@ -1,6 +1,6 @@
 import express from 'express'
 import multer from 'multer';
-import { asyncHandler, checkGraphQLErrors, extra_data_from_response, get_beatstars_token, sleep } from "../utils";
+import { asyncHandler, beatstarsSlug, checkGraphQLErrors, extra_data_from_response, get_beatstars_token, sleep } from "../utils";
 import { BeatStarsTrack } from "../types";
 import { api_error400, api_error500 } from '../errors';
 
@@ -47,6 +47,9 @@ bs_router.post(
 
     const token = await get_beatstars_token();
 
+    const beatstars_slug = beatstarsSlug(file.originalname)
+    console.log({beatstars_slug})
+
     /* --------------------------------------------------
        1) CREATE ASSET FILE (GraphQL)
     -------------------------------------------------- */
@@ -63,7 +66,7 @@ bs_router.post(
           operationName: "createAssetFile",
           variables: {
             file: {
-              fileName: file.originalname,
+              fileName: beatstars_slug,
               contentType: mimetype
             }
           },
@@ -98,10 +101,10 @@ bs_router.post(
     -------------------------------------------------- */
 
     const params = new URLSearchParams({
-      filename: file.originalname,
+      filename: beatstars_slug,
       type: asset.file.type,
       "metadata[asset-id]": asset.id,
-      "metadata[name]": file.originalname,
+      "metadata[name]": beatstars_slug,
       "metadata[type]": asset.file.type,
       "metadata[content-type]": mimetype,
       "metadata[version]": "2",

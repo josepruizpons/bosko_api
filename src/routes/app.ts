@@ -10,7 +10,7 @@ const app = express();
 
 const allowedOrigins = process.env.NODE_ENV === "production"
   ? ["https://bosko-9p6c.onrender.com"]
-  : ["http://localhost:5173"];
+  : ["http://localhost:5173", 'http://localhost:5176'];
 
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());

@@ -138,3 +138,27 @@ export async function generate_video(audioBuffer: Buffer, imageBuffer: Buffer): 
   return buffer
 }
 export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+
+
+export function beatstarsSlug(input: string): string {
+  return input
+    // pasar a minúsculas
+    .toLowerCase()
+
+    // normalizar acentos (á → a, ñ → n, etc.)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+
+    // reemplazar & por 'and' (beatstars suele hacerlo)
+    .replace(/&/g, "and")
+
+    // eliminar todo lo que no sea letras, números o espacios
+    .replace(/[^a-z0-9\s-]/g, "")
+
+    // reemplazar espacios y guiones múltiples por un solo guión
+    .replace(/[\s-]+/g, "-")
+
+    // quitar guiones al inicio o final
+    .replace(/^-+|-+$/g, "");
+}
