@@ -171,12 +171,18 @@ bs_router.post('/publish',
       const track_name: string = req.body.name
       const beat_id_asset: string = req.body.beat_id_asset
       const thumbnail_id_asset: string = req.body.thumbnail_id_asset
+      const publish_at: string | null = req.body.publish_at ?? null
 
       if (
         typeof track_name !== 'string'
         || typeof thumbnail_id_asset !== 'string'
         || typeof beat_id_asset !== 'string'
       ) api_error400()
+
+      const publish_date = publish_at === null ? null : new Date(publish_at)
+      if (publish_date !== null && isNaN(publish_date.getTime())) {
+        return api_error400('Invalid publish_at date')
+      }
 
       const token = await get_beatstars_token()
       const headers = {
@@ -268,7 +274,7 @@ bs_router.post('/publish',
               "keyNote": "NONE",
               "moods": []
             },
-            "releaseDate": "2026-01-11T17:02:21.746Z",
+            "releaseDate": publish_date?.toISOString() ?? (new Date()).toISOString(),
             "thirdPartyLoopsAndSample": [],
             "title": track_name,
             "visibility": "PRIVATE",
@@ -368,7 +374,7 @@ bs_router.post('/publish',
       res.json({
         id_asset: beat_id_asset,
         id_track,
-        share_link: publish_track_body.data.publishTrack.url,
+        share_link: publish_track_body.data.publishTrack.shareUrl,
       })
     }
   )
