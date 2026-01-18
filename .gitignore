@@ -5,3 +5,7 @@
 /dist
 /media
 /temp
+
+/src/generated/prisma
+
+/generated/prisma

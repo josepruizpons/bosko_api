@@ -17,3 +17,7 @@ export function api_error400(message: string = '') {
   throw new ApiError(400, 'Bad Request', message)
 }
 
+export function api_error403(message: string = '') {
+  throw new ApiError(403, 'Forbidden', message)
+}
+

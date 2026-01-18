@@ -1,0 +1,29 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model oauth {
+  id              Int       @id @default(autoincrement())
+  id_user         Int?
+  connection_type String?   @db.VarChar(255)
+  access_token    String?   @db.VarChar(1000)
+  refresh_token   String    @db.VarChar(500)
+  client_secret   String    @db.VarChar(255)
+  client_id       String    @db.VarChar(255)
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+  users           users?    @relation(fields: [id_user], references: [id], onDelete: NoAction, map: "oauth_users_fk")
+}
+
+model users {
+  id         Int       @id @default(autoincrement())
+  email      String    @unique @db.VarChar(255)
+  password   String
+  is_active  Boolean?  @default(true)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  oauth      oauth[]
+}
