@@ -6,20 +6,6 @@ import { db } from '../db'
 
 export const auth_router = express.Router()
 
-
-auth_router.get('/check', async (req, res) => {
-  const sessionId = req.cookies?.bosko_cookie;
-  console.log(req.cookies)
-
-  if (!sessionId) {
-    return res.status(401).json({
-      error: "No active session",
-    });
-  }
-
-  return res.status(204).send()
-})
-
 auth_router.post('/login', async (req, res) => {
   console.log(req.body)
   const { email, password } = req.body ?? { email: undefined, password: undefined }
@@ -46,13 +32,21 @@ auth_router.post('/login', async (req, res) => {
     return api_error403('Invalid password')
   }
 
-  res.cookie('bosko_cookie', user.id, {
-    httpOnly: true,
-    sameSite: 'none',
-    secure: true,       // 🔑 importante
-    maxAge: 24 * 60 * 60 * 1000 * 7, // one week
-    path: '/',
-  });
-
+  console.log({user})
+  req.session.userId = user.id;
+  // res.cookie('bosko_cookie', user.id, {
+  //   httpOnly: true,
+  //   sameSite: 'none',
+  //   secure: true,       // 🔑 importante
+  //   maxAge: 24 * 60 * 60 * 1000 * 7, // one week
+  //   path: '/',
+  // });
   return res.status(200).send({ success: true })
 })
+
+
+//lgout
+// req.session.destroy(() => {
+//   res.clearCookie('bosko_session');
+//   res.sendStatus(204);
+// });
