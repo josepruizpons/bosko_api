@@ -48,9 +48,9 @@ auth_router.post('/login', async (req, res) => {
 
   res.cookie('bosko_cookie', '2', {
     httpOnly: true,
-    sameSite: 'lax',
+    sameSite: 'none',
     secure: true,       // 🔑 importante
-    maxAge: 24 * 60 * 60 * 1000,
+    maxAge: 24 * 60 * 60 * 1000 * 7, // one week
     path: '/',
   });
 
