@@ -46,7 +46,7 @@ auth_router.post('/login', async (req, res) => {
     return api_error403('Invalid password')
   }
 
-  res.cookie('bosko_cookie', '2', {
+  res.cookie('bosko_cookie', user.id, {
     httpOnly: true,
     sameSite: 'none',
     secure: true,       // 🔑 importante
