@@ -2,14 +2,26 @@ import fs from 'fs'
 import ffmpeg from 'fluent-ffmpeg'
 import path from 'path'
 import { ErrorRequestHandler, NextFunction, Request, RequestHandler, Response as ExpressResponse } from "express";
-import { api_error500, ApiError } from "./errors";
+import { api_error403, api_error500, ApiError } from "./errors";
 import { BeatStarsLoginResponse, GraphQLResponse } from "./types";
+import { db } from './db';
+import { Prisma } from './generated/prisma/client';
+import { CONNECTION_TYPES } from './constants';
 
-export async function get_beatstars_token() {
+export async function get_beatstars_token(user_id: number) {
+  const bs_oauth = await db.oauth.findFirst({
+    where:{
+      connection_type: CONNECTION_TYPES.BEATSTARS,
+      id_user: user_id,
+
+    }
+  })
+  if(!bs_oauth) return api_error500()
+
   const urlencoded = new URLSearchParams();
-  urlencoded.append("refresh_token", process.env.BS_REFRESH_TOKEN ?? '');
-  urlencoded.append("client_id", process.env.BS_CLIENT_ID ?? '');
-  urlencoded.append("client_secret", process.env.BS_CLIENT_SECRET ?? '');
+  urlencoded.append("refresh_token", bs_oauth.refresh_token);
+  urlencoded.append("client_id", bs_oauth.client_id);
+  urlencoded.append("client_secret", bs_oauth.client_secret);
   urlencoded.append("grant_type", "refresh_token");
   const response = await fetch("https://core.prod.beatstars.net/auth/oauth/token", {
     method: 'POST',
@@ -162,3 +174,17 @@ export function beatstarsSlug(input: string): string {
     // quitar guiones al inicio o final
     .replace(/^-+|-+$/g, "");
 }
+
+export async function get_current_user(req: Request){
+  const id_user = parseInt(req.id_user ?? '-1')
+  const user = await db.users.findUnique({
+    where: {
+      id:id_user
+    }
+  })
+
+  if(!user) api_error403('User not found')
+  return user as Prisma.usersModel
+
+}
+

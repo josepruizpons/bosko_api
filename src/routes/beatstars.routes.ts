@@ -1,6 +1,6 @@
 import express from 'express'
 import multer from 'multer';
-import { asyncHandler, beatstarsSlug, checkGraphQLErrors, extra_data_from_response, get_beatstars_token, sleep } from "../utils";
+import { asyncHandler, beatstarsSlug, checkGraphQLErrors, extra_data_from_response, get_beatstars_token, get_current_user, sleep } from "../utils";
 import { BeatStarsTrack } from "../types";
 import { api_error400, api_error500 } from '../errors';
 
@@ -9,8 +9,9 @@ export const bs_router = express.Router()
 
 bs_router.get('/login',
   asyncHandler(
-    async (_, res) => {
-      res.json({ token: (await get_beatstars_token()) })
+    async (req, res) => {
+      const user = await get_current_user(req)
+      res.json({ token: (await get_beatstars_token(user.id)) })
     }
   ))
 
@@ -26,6 +27,7 @@ bs_router.post(
   '/upload',
   upload.single('file'),
   asyncHandler(async (req, res) => {
+    const user = await get_current_user(req)
 
     const file = req.file;
     if (!file || !file.buffer || file.size === 0) {
@@ -44,7 +46,7 @@ bs_router.post(
       return;
     }
 
-    const token = await get_beatstars_token();
+    const token = await get_beatstars_token(user.id);
 
     const beatstars_slug = beatstarsSlug(file.originalname)
     console.log({ beatstars_slug })
@@ -167,6 +169,7 @@ bs_router.post(
 bs_router.post('/publish',
   asyncHandler(
     async (req, res) => {
+      const user = await get_current_user(req)
 
       const track_name: string = req.body.name
       const beat_id_asset: string = req.body.beat_id_asset
@@ -184,7 +187,7 @@ bs_router.post('/publish',
         return api_error400('Invalid publish_at date')
       }
 
-      const token = await get_beatstars_token()
+      const token = await get_beatstars_token(user.id)
       const headers = {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json"

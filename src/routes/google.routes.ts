@@ -2,33 +2,39 @@ import express from 'express'
 import { google } from 'googleapis';
 import { api_error400 } from '../errors';
 import multer from 'multer'
-import { buffer_to_stream, generate_video } from '../utils';
-import { oauth2Client } from '../google_auth';
+import { buffer_to_stream, generate_video, get_current_user } from '../utils';
+import { get_google_client } from '../google_auth';
+import { db } from '../db';
+import { CONNECTION_TYPES } from '../constants';
 
 
 const upload = multer({ storage: multer.memoryStorage() }) // todo en memoria
 export const google_router = express.Router();
 
 // Ruta GET /google
-google_router.get('/connect', (_, res) => {
+google_router.get('/connect', async (req, res) => {
+  const user = await get_current_user(req)
+  const google_client = await get_google_client(user.id)
 
   const scopes = [
     // "https://www.googleapis.com/auth/youtube.upload",
     'https://www.googleapis.com/auth/youtube',
   ];
 
-  const url = oauth2Client.generateAuthUrl({
+  const url = google_client.generateAuthUrl({
     access_type: "offline",
     scope: scopes,
   });
 
   res.json({
-    url
   })
+  url
 });
 
 // Ruta GET /google/auth
 google_router.get('/auth_callback', async (req, res) => {
+  const user = await get_current_user(req)
+  const google_client = await get_google_client(user.id)
   const code = req.query.code;
 
   if (code === undefined || typeof code !== 'string') {
@@ -36,9 +42,21 @@ google_router.get('/auth_callback', async (req, res) => {
     return
   }
 
-  const { tokens } = await oauth2Client.getToken(code);
+  //WARN: check if session applies to this endpoint
+  const { tokens } = await google_client.getToken(code);
+  const updatedOAuth = await db.oauth.updateMany({
+    where: {
+      id_user: user.id,
+      connection_type: CONNECTION_TYPES.YOUTUBE,
+    },
+    data: {
+      refresh_token: tokens.refresh_token ?? '',
+    },
+  });
+
+  console.log(updatedOAuth);
   console.log({ tokens })
-  oauth2Client.setCredentials(tokens);
+  google_client.setCredentials(tokens);
   // Guarda refresh_token en BD
 
   res.send("Autorización completada ✅");
@@ -54,6 +72,9 @@ google_router.post(
     { name: 'thumbnail', maxCount: 1 },
   ]),
   async (req, res) => {
+    const user = await get_current_user(req)
+    const google_client = await get_google_client(user.id)
+
     try {
       const files = req.files as { [fieldname: string]: Express.Multer.File[] }
       const bs_url: string = req.body.bs_url
@@ -80,9 +101,9 @@ google_router.post(
       console.log('Video generated: ' + name)
 
       // Subir a YouTube
-      const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
+      const youtube = google.youtube({ version: 'v3', auth: google_client })
 
-      console.log({publish_date: publish_date?.toISOString()})
+      console.log({ publish_date: publish_date?.toISOString() })
 
       const response = await youtube.videos.insert({
         part: ['snippet', 'status'],

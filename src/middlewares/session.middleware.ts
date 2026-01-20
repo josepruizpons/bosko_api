@@ -5,7 +5,9 @@ export function require_session(
   res: Response,
   next: NextFunction
 ) {
-  const sessionId = req.cookies?.session_id;
+
+  const sessionId = req.cookies?.bosko_cookie;
+  console.log({sessionId})
 
   if (!sessionId) {
     return res.status(401).json({
@@ -14,7 +16,7 @@ export function require_session(
   }
 
   // opcional: adjuntar a req para usar luego
-  (req as any).sessionId = sessionId;
+  req.id_user = sessionId;
 
   next();
 }
