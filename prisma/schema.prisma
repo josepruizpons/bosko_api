@@ -1,6 +1,6 @@
 generator client {
   provider = "prisma-client"
-  output   = "../generated/prisma"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -8,15 +8,16 @@ datasource db {
 }
 
 model oauth {
-  id              Int       @id @default(autoincrement())
-  id_user         Int?
-  connection_type String?   @db.VarChar(255)
-  access_token    String?   @db.VarChar(1000)
-  refresh_token   String    @db.VarChar(500)
-  client_secret   String    @db.VarChar(255)
-  client_id       String    @db.VarChar(255)
-  created_at      DateTime? @default(now()) @db.Timestamp(6)
-  users           users?    @relation(fields: [id_user], references: [id], onDelete: NoAction, map: "oauth_users_fk")
+  id                Int                @id @default(autoincrement())
+  id_user           Int?
+  connection_type   String?            @db.VarChar(255)
+  access_token      String?            @db.VarChar(1000)
+  refresh_token     String             @db.VarChar(1000)
+  client_secret     String             @db.VarChar(255)
+  client_id         String             @db.VarChar(255)
+  created_at        DateTime?          @default(now()) @db.Timestamp(6)
+  e_connection_type e_connection_type? @relation(fields: [connection_type], references: [name], onDelete: Restrict, map: "oauth_e_connection_type_fk")
+  users             users?             @relation(fields: [id_user], references: [id], onDelete: NoAction, map: "oauth_users_fk")
 }
 
 model users {
@@ -26,4 +27,9 @@ model users {
   is_active  Boolean?  @default(true)
   created_at DateTime? @default(now()) @db.Timestamp(6)
   oauth      oauth[]
+}
+
+model e_connection_type {
+  name  String  @id(map: "e_connection_type_pk") @db.VarChar
+  oauth oauth[]
 }
