@@ -1,7 +1,5 @@
 import express from "express";
 import session from 'express-session';
-import  RedisStore from 'connect-redis';
-import Redis from 'ioredis';
 import cors from "cors"
 import cookieParser from "cookie-parser";
 import "dotenv/config"; // carga automáticamente process.env
@@ -37,21 +35,18 @@ app.get("/health", async (_req, res) => {
 if (!process.env.SESSION_SECRET) {
   throw new Error('SESSION_SECRET is not defined');
 }
-const redis = new Redis();
+
 app.set('trust proxy', 1);
 app.use(
   session({
     name: 'bosko_session',
-    store: new RedisStore({
-      client: redis,
-    }),
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: true,      // solo HTTPS
-      sameSite: 'none',  // frontend en otro dominio
+      secure: true,
+      sameSite: 'none',
       maxAge: 1000 * 60 * 60 * 24 * 7,
     },
   })

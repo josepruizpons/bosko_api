@@ -16,13 +16,11 @@ auth_router.post('/login', async (req, res) => {
     typeof password != 'string'
   ) api_error400('Invalid password')
 
-  console.log({ email, password })
   const user = await db.users.findFirst({
     where: {
       email,
     }
   })
-  console.log({ user })
 
   if (user === null) {
     return api_error403('Invalid email')
@@ -32,21 +30,22 @@ auth_router.post('/login', async (req, res) => {
     return api_error403('Invalid password')
   }
 
-  console.log({user})
+  console.log({ user })
   req.session.userId = user.id;
-  // res.cookie('bosko_cookie', user.id, {
-  //   httpOnly: true,
-  //   sameSite: 'none',
-  //   secure: true,       // 🔑 importante
-  //   maxAge: 24 * 60 * 60 * 1000 * 7, // one week
-  //   path: '/',
-  // });
   return res.status(200).send({ success: true })
 })
 
 
-//lgout
-// req.session.destroy(() => {
-//   res.clearCookie('bosko_session');
-//   res.sendStatus(204);
-// });
+auth_router.get('/logout', (req, res) => {
+  req.session.destroy(err => {
+    if (err) {
+      return res.status(500).json({ message: 'Logout failed' });
+    }
+
+    res.clearCookie('bosko_session', {
+      path: '/',
+    });
+
+    res.status(200).json({ message: 'Logged out' });
+  });
+});
