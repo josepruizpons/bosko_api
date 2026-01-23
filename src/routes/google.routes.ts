@@ -26,9 +26,7 @@ google_router.get('/connect', async (req, res) => {
     scope: scopes,
   });
 
-  res.json({
-  })
-  url
+  res.json({ url })
 });
 
 // Ruta GET /google/auth
