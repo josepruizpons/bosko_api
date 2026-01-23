@@ -176,7 +176,7 @@ export function beatstarsSlug(input: string): string {
 }
 
 export async function get_current_user(req: Request){
-  const id_user = parseInt(req.id_user ?? '-1')
+  const id_user = req.session.userId ?? -1
   const user = await db.users.findUnique({
     where: {
       id:id_user
