@@ -15,7 +15,10 @@ const app = express();
 app.use(cookieParser());
 
 const allowedOrigins = process.env.NODE_ENV === "production"
-  ? ["https://bosko-9p6c.onrender.com"]
+  ? [
+    "https://bosko-9p6c.onrender.com",
+    'https://bosko-api-ppse.onrender.com'
+  ]
   : [
     "http://localhost:5173",
     'http://localhost:5176',
