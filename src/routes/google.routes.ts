@@ -57,7 +57,23 @@ google_router.get('/auth_callback', async (req, res) => {
   google_client.setCredentials(tokens);
   // Guarda refresh_token en BD
 
-  res.send("Autorización completada ✅");
+  // RESPUESTA QUE CIERRA EL POPUP
+  res.send(`
+    <html>
+      <body>
+        <script>
+          if (window.opener) {
+            window.opener.postMessage(
+              { type: "google-auth-success" },
+              "${process.env.FRONTEND_URL}"
+            );
+          }
+          window.close();
+        </script>
+        Autorización completada. Puedes cerrar esta ventana.
+      </body>
+    </html>
+  `);
 });
 
 
