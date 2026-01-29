@@ -20,7 +20,7 @@ export const get_google_client = async (user_id: number) => {
     api_error500(`${CONNECTION_TYPES.YOUTUBE} oauth not found`)
   }
   const callback_endpoint = process.env.NODE_ENV === "production"
-    ? `${PROD_HOSTNAME}/auth/auth_callback`
+    ? `${PROD_HOSTNAME}/api/google/auth_callback`
     : 'https://localhost:3000/api/google/auth_callback'
 
 
