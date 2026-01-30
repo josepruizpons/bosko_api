@@ -9,4 +9,4 @@ export const CONNECTION_TYPES = {
   YOUTUBE: 'YOUTUBE',
 }
 
-export const PROD_HOSTNAME = 'https://bosko-api-ppse.onrender.com'
+export const PROD_HOSTNAME = 'https://api.boskofiles.com'
