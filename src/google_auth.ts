@@ -6,7 +6,9 @@ import { CONNECTION_TYPES, PROD_HOSTNAME } from './constants'
 
 
 
-export const get_google_client = async (user_id: number) => {
+export const get_google_client = async (
+  user_id: number,
+) => {
   const oauth = await db.oauth.findFirst({
     where: {
       connection_type: CONNECTION_TYPES.YOUTUBE,
@@ -20,8 +22,9 @@ export const get_google_client = async (user_id: number) => {
     api_error500(`${CONNECTION_TYPES.YOUTUBE} oauth not found`)
   }
   const callback_endpoint = process.env.NODE_ENV === "production"
-    ? `${PROD_HOSTNAME}/api/google/auth_callback`
-    : 'https://localhost:3000/api/google/auth_callback'
+    ? `${PROD_HOSTNAME}/google/auth_callback/${user_id}`
+    : `https://localhost:3000/google/auth_callback/${user_id}`
+
 
 
   const oauth2Client = new google.auth.OAuth2(

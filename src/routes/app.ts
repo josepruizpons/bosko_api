@@ -5,11 +5,14 @@ import cookieParser from "cookie-parser";
 import "dotenv/config"; // carga automáticamente process.env
 import { google_router } from "./google.routes";
 import { bs_router } from "./beatstars.routes";
-import { errorHandler } from "../utils";
+import { errorHandler, get_current_user } from "../utils";
 
 import { db } from "../db"
 import { auth_router } from "./auth.routes";
 import { validate_session } from "../middlewares/session.middleware";
+import { get_google_client } from "../google_auth";
+import { api_error400 } from "../errors";
+import { CONNECTION_TYPES } from "../constants";
 
 const app = express();
 app.use(cookieParser());
@@ -49,11 +52,61 @@ app.use(
     cookie: {
       httpOnly: true,
       secure: true,
-      sameSite: 'none',
+      sameSite: 'lax',
       maxAge: 1000 * 60 * 60 * 24 * 7,
     },
   })
 );
+
+// Ruta GET /google/auth
+app.get('/google/auth_callback/:user_id', async (req, res) => {
+  req.session.userId = parseInt(req.params.user_id)
+  if(!req.session.userId) return api_error400('No user_id')
+  const user = await get_current_user(req)
+  const google_client = await get_google_client(user.id)
+  const code = req.query.code;
+
+  if (code === undefined || typeof code !== 'string') {
+    api_error400('Invalid code')
+    return
+  }
+
+  //WARN: check if session applies to this endpoint
+  const { tokens } = await google_client.getToken(code);
+  const updatedOAuth = await db.oauth.updateMany({
+    where: {
+      id_user: user.id,
+      connection_type: CONNECTION_TYPES.YOUTUBE,
+    },
+    data: {
+      refresh_token: tokens.refresh_token ?? '',
+    },
+  });
+
+  console.log(updatedOAuth);
+  console.log({ tokens })
+  google_client.setCredentials(tokens);
+  // Guarda refresh_token en BD
+
+  // RESPUESTA QUE CIERRA EL POPUP
+  res.send(`
+    <html>
+      <body>
+        <script>
+          if (window.opener) {
+            window.opener.postMessage(
+              { type: "google-auth-success" },
+              "${process.env.FRONTEND_URL}"
+            );
+          }
+          window.close();
+        </script>
+        Autorización completada. Puedes cerrar esta ventana.
+      </body>
+    </html>
+  `);
+});
+
 
 app.use('/auth', auth_router)
 
