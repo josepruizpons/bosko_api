@@ -4,8 +4,6 @@ import { api_error400 } from '../errors';
 import multer from 'multer'
 import { buffer_to_stream, generate_video, get_current_user } from '../utils';
 import { get_google_client } from '../google_auth';
-import { db } from '../db';
-import { CONNECTION_TYPES } from '../constants';
 
 
 const upload = multer({ storage: multer.memoryStorage() }) // todo en memoria
@@ -24,60 +22,61 @@ google_router.get('/connect', async (req, res) => {
   const url = google_client.generateAuthUrl({
     access_type: "offline",
     scope: scopes,
+    state: user.id.toString(),
   });
 
   res.json({ url })
 });
 
-// Ruta GET /google/auth
-google_router.get('/auth_callback', async (req, res) => {
-  const user = await get_current_user(req)
-  const google_client = await get_google_client(user.id)
-  const code = req.query.code;
-
-  if (code === undefined || typeof code !== 'string') {
-    api_error400('Invalid code')
-    return
-  }
-
-  //WARN: check if session applies to this endpoint
-  const { tokens } = await google_client.getToken(code);
-  const updatedOAuth = await db.oauth.updateMany({
-    where: {
-      id_user: user.id,
-      connection_type: CONNECTION_TYPES.YOUTUBE,
-    },
-    data: {
-      refresh_token: tokens.refresh_token ?? '',
-    },
-  });
-
-  console.log(updatedOAuth);
-  console.log({ tokens })
-  google_client.setCredentials(tokens);
-  // Guarda refresh_token en BD
-
-  // RESPUESTA QUE CIERRA EL POPUP
-  res.send(`
-    <html>
-      <body>
-        <script>
-          if (window.opener) {
-            window.opener.postMessage(
-              { type: "google-auth-success" },
-              "${process.env.FRONTEND_URL}"
-            );
-          }
-          window.close();
-        </script>
-        Autorización completada. Puedes cerrar esta ventana.
-      </body>
-    </html>
-  `);
-});
-
-
-
+// // Ruta GET /google/auth
+// google_router.get('/auth_callback', async (req, res) => {
+//   const user = await get_current_user(req)
+//   const google_client = await get_google_client(user.id)
+//   const code = req.query.code;
+//
+//   if (code === undefined || typeof code !== 'string') {
+//     api_error400('Invalid code')
+//     return
+//   }
+//
+//   //WARN: check if session applies to this endpoint
+//   const { tokens } = await google_client.getToken(code);
+//   const updatedOAuth = await db.oauth.updateMany({
+//     where: {
+//       id_user: user.id,
+//       connection_type: CONNECTION_TYPES.YOUTUBE,
+//     },
+//     data: {
+//       refresh_token: tokens.refresh_token ?? '',
+//     },
+//   });
+//
+//   console.log(updatedOAuth);
+//   console.log({ tokens })
+//   google_client.setCredentials(tokens);
+//   // Guarda refresh_token en BD
+//
+//   // RESPUESTA QUE CIERRA EL POPUP
+//   res.send(`
+//     <html>
+//       <body>
+//         <script>
+//           if (window.opener) {
+//             window.opener.postMessage(
+//               { type: "google-auth-success" },
+//               "${process.env.FRONTEND_URL}"
+//             );
+//           }
+//           window.close();
+//         </script>
+//         Autorización completada. Puedes cerrar esta ventana.
+//       </body>
+//     </html>
+//   `);
+// });
+//
+//
+//
 
 google_router.post(
   '/upload-youtube',

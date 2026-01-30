@@ -61,8 +61,8 @@ app.use(
 );
 
 // Ruta GET /google/auth
-app.get('/google/auth_callback/:user_id', async (req, res) => {
-  req.session.userId = parseInt(req.params.user_id)
+app.get('/google/auth_callback', async (req, res) => {
+  req.session.userId = parseInt(req.query.state as string)
   if(!req.session.userId) return api_error400('No user_id')
   const user = await get_current_user(req)
   const google_client = await get_google_client(user.id)
