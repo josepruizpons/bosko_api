@@ -20,7 +20,8 @@ app.use(cookieParser());
 const allowedOrigins = process.env.NODE_ENV === "production"
   ? [
     "https://bosko-9p6c.onrender.com",
-    'https://bosko-api-ppse.onrender.com'
+    'https://bosko-api-ppse.onrender.com',
+    'https://boskofiles.com',
   ]
   : [
     "http://localhost:5173",
