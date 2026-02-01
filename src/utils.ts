@@ -10,13 +10,13 @@ import { CONNECTION_TYPES } from './constants';
 
 export async function get_beatstars_token(user_id: number) {
   const bs_oauth = await db.oauth.findFirst({
-    where:{
+    where: {
       connection_type: CONNECTION_TYPES.BEATSTARS,
       id_user: user_id,
 
     }
   })
-  if(!bs_oauth) return api_error500()
+  if (!bs_oauth) return api_error500()
 
   const urlencoded = new URLSearchParams();
   urlencoded.append("refresh_token", bs_oauth.refresh_token);
@@ -128,17 +128,18 @@ export async function generate_video(audioBuffer: Buffer, imageBuffer: Buffer): 
       .videoCodec('libx264')
       .audioCodec('aac')
       .audioBitrate('192k')
-     .outputOptions([
+      .outputOptions([
         '-tune stillimage',
         '-shortest',
         '-pix_fmt yuv420p',
-        // Escala manteniendo la proporción y agrega bandas negras si es necesario
+        '-r 1', // 1 fps
+        '-preset veryfast', // menor uso de RAM/CPU
         '-vf scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black'
       ])
       .size('1920x1080')
       .save(outputPath)
       .on('end', () => resolve())
-      .on('error', (err) => reject(err))
+      .on('error', (err) => reject(err));
   })
 
   const buffer = fs.readFileSync(outputPath)
@@ -175,15 +176,15 @@ export function beatstarsSlug(input: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-export async function get_current_user(req: Request){
+export async function get_current_user(req: Request) {
   const id_user = req.session.userId ?? -1
   const user = await db.users.findUnique({
     where: {
-      id:id_user
+      id: id_user
     }
   })
 
-  if(!user) api_error403('User not found')
+  if (!user) api_error403('User not found')
   return user as Prisma.usersModel
 
 }
