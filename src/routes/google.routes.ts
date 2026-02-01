@@ -21,6 +21,7 @@ google_router.get('/connect', async (req, res) => {
 
   const url = google_client.generateAuthUrl({
     access_type: "offline",
+    prompt: 'consent',
     scope: scopes,
     state: user.id.toString(),
   });
