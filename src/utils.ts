@@ -3,7 +3,7 @@ import ffmpeg from 'fluent-ffmpeg'
 import path from 'path'
 import { ErrorRequestHandler, NextFunction, Request, RequestHandler, Response as ExpressResponse } from "express";
 import { api_error403, api_error500, ApiError } from "./errors";
-import { BeatStarsLoginResponse, GraphQLResponse } from "./types";
+import { BeatStarsLoginResponse, GraphQLResponse } from "./types/bs_types";
 import { db } from './db';
 import { Prisma } from './generated/prisma/client';
 import { CONNECTION_TYPES } from './constants';

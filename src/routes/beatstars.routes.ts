@@ -1,7 +1,7 @@
 import express from 'express'
 import multer from 'multer';
 import { asyncHandler, beatstarsSlug, checkGraphQLErrors, extra_data_from_response, get_beatstars_token, get_current_user, sleep } from "../utils";
-import { BeatStarsTrack } from "../types";
+import { BeatStarsTrack } from "../types/bs_types";
 import { api_error400, api_error500 } from '../errors';
 
 export const bs_router = express.Router()

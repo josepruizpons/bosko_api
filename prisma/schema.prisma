@@ -53,6 +53,7 @@ model e_asset_type {
 
 model track {
   id                              String   @id(map: "track_pk") @db.Char(11)
+  name                            String   @db.VarChar
   id_user                         Int
   id_beat                         String?  @db.Char(11)
   id_thumbnail                    String?  @db.Char(11)
