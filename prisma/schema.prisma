@@ -27,9 +27,38 @@ model users {
   is_active  Boolean?  @default(true)
   created_at DateTime? @default(now()) @db.Timestamp(6)
   oauth      oauth[]
+  track      track[]
 }
 
 model e_connection_type {
   name  String  @id(map: "e_connection_type_pk") @db.VarChar
   oauth oauth[]
+}
+
+model asset {
+  id                              String       @id @db.Char(11)
+  name                            String       @db.VarChar
+  type                            String       @db.VarChar
+  created_at                      DateTime     @default(now()) @db.Timestamp(6)
+  beatstars_id                    String?      @db.VarChar
+  e_asset_type                    e_asset_type @relation(fields: [type], references: [name], map: "asset_e_asset_type_fk")
+  track_track_id_beatToasset      track[]      @relation("track_id_beatToasset")
+  track_track_id_thumbnailToasset track[]      @relation("track_id_thumbnailToasset")
+}
+
+model e_asset_type {
+  name  String  @id(map: "e_asset_type_pk") @db.VarChar
+  asset asset[]
+}
+
+model track {
+  id                              String   @id(map: "track_pk") @db.Char(11)
+  id_user                         Int
+  id_beat                         String?  @db.Char(11)
+  id_thumbnail                    String?  @db.Char(11)
+  yt_url                          String?  @db.VarChar
+  created_at                      DateTime @default(now()) @db.Timestamp(6)
+  asset_track_id_beatToasset      asset?   @relation("track_id_beatToasset", fields: [id_beat], references: [id], onDelete: Cascade, map: "beat_fk")
+  asset_track_id_thumbnailToasset asset?   @relation("track_id_thumbnailToasset", fields: [id_thumbnail], references: [id], onDelete: Cascade, map: "thumnbnail_fk")
+  users                           users    @relation(fields: [id_user], references: [id], onDelete: Cascade, map: "track_users_fk")
 }
