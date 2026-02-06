@@ -4,7 +4,7 @@ import { api_error400, api_error500 } from '../errors';
 import { buffer_to_stream, generate_video, get_current_user, youtubeUrl } from '../utils';
 import { get_google_client } from '../google_auth';
 import { db } from '../db'
-import { downloadFileFromS3, invokeVideoLambda } from '../aws';
+import { deleteFileFromS3, downloadFileFromS3, invokeVideoLambda } from '../aws';
 
 export const google_router = express.Router();
 
@@ -102,6 +102,7 @@ google_router.post(
       }
 
       let videoBuffer: Buffer;
+      let videoS3Key: string | undefined;
 
       // Get assets from database (both production and local)
       const beatAsset = await db.asset.findUnique({
@@ -127,7 +128,7 @@ google_router.post(
         console.log('Using Lambda for video generation in production');
 
         // Invoke Lambda
-        const videoS3Key = await invokeVideoLambda(
+        videoS3Key = await invokeVideoLambda(
           beatAsset.s3_key,
           thumbnailAsset.s3_key,
           track.name
@@ -181,6 +182,17 @@ If you want to make profit with your music (upload your song to streaming servic
         where: {id: track.id},
         data: { yt_url: youtubeUrl(yt_id)}
       })
+
+      // Delete temporary video from S3 (production only)
+      if (isProduction && videoS3Key) {
+        try {
+          await deleteFileFromS3(videoS3Key);
+          console.log('Temporary video deleted from S3:', videoS3Key);
+        } catch (deleteErr) {
+          // Don't fail the entire operation if deletion fails
+          console.error('Error deleting video from S3:', deleteErr);
+        }
+      }
 
       res.json({ success: true, videoId: yt_id })
     } catch (err) {
