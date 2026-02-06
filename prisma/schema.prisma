@@ -41,6 +41,7 @@ model asset {
   type                            String       @db.VarChar
   created_at                      DateTime     @default(now()) @db.Timestamp(6)
   beatstars_id                    String?      @db.VarChar
+  s3_key                          String       @db.VarChar
   e_asset_type                    e_asset_type @relation(fields: [type], references: [name], map: "asset_e_asset_type_fk")
   track_track_id_beatToasset      track[]      @relation("track_id_beatToasset")
   track_track_id_thumbnailToasset track[]      @relation("track_id_thumbnailToasset")
@@ -52,14 +53,17 @@ model e_asset_type {
 }
 
 model track {
-  id                              String   @id(map: "track_pk") @db.Char(11)
-  name                            String   @db.VarChar
+  id                              String    @id(map: "track_pk") @db.Char(11)
+  name                            String    @db.VarChar
   id_user                         Int
-  id_beat                         String?  @db.Char(11)
-  id_thumbnail                    String?  @db.Char(11)
-  yt_url                          String?  @db.VarChar
-  created_at                      DateTime @default(now()) @db.Timestamp(6)
-  asset_track_id_beatToasset      asset?   @relation("track_id_beatToasset", fields: [id_beat], references: [id], onDelete: Cascade, map: "beat_fk")
-  asset_track_id_thumbnailToasset asset?   @relation("track_id_thumbnailToasset", fields: [id_thumbnail], references: [id], onDelete: Cascade, map: "thumnbnail_fk")
-  users                           users    @relation(fields: [id_user], references: [id], onDelete: Cascade, map: "track_users_fk")
+  id_beat                         String    @db.Char(11)
+  id_thumbnail                    String    @db.Char(11)
+  yt_url                          String?   @db.VarChar
+  created_at                      DateTime  @default(now()) @db.Timestamp(6)
+  beatstars_url                   String?   @db.VarChar
+  publish_at                      DateTime? @db.Timestamp(6)
+  beatstars_id_track              String?   @db.VarChar
+  asset_track_id_beatToasset      asset     @relation("track_id_beatToasset", fields: [id_beat], references: [id], onDelete: Cascade, map: "beat_fk")
+  asset_track_id_thumbnailToasset asset     @relation("track_id_thumbnailToasset", fields: [id_thumbnail], references: [id], onDelete: Cascade, map: "thumnbnail_fk")
+  users                           users     @relation(fields: [id_user], references: [id], onDelete: Cascade, map: "track_users_fk")
 }

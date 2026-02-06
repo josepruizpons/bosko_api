@@ -1,6 +1,8 @@
 import fs from 'fs'
 import ffmpeg from 'fluent-ffmpeg'
 import path from 'path'
+import crypto from 'crypto'
+
 import { ErrorRequestHandler, NextFunction, Request, RequestHandler, Response as ExpressResponse } from "express";
 import { api_error403, api_error500, ApiError } from "./errors";
 import { BeatStarsLoginResponse, GraphQLResponse } from "./types/bs_types";
@@ -48,6 +50,7 @@ export const errorHandler: ErrorRequestHandler = (
   __
 ) => {
   if (err instanceof ApiError) {
+    console.log({err})
     res.status(err.status_code).json({
       error: err.code,
       message: err.message
@@ -189,3 +192,20 @@ export async function get_current_user(req: Request) {
 
 }
 
+
+const characterSet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_';
+
+export function generate_id(length = 11) {
+  const bytes = crypto.randomBytes(length);
+  let result = '';
+
+  for (let i = 0; i < length; i++) {
+    result += characterSet[bytes[i] % characterSet.length];
+  }
+
+  return result;
+}
+
+export function youtubeUrl(videoId: string) {
+  return `https://www.youtube.com/watch?v=${videoId}`;
+}

@@ -1,8 +1,12 @@
 import express from 'express'
 import multer from 'multer';
-import { asyncHandler, beatstarsSlug, checkGraphQLErrors, extra_data_from_response, get_beatstars_token, get_current_user, sleep } from "../utils";
+import { asyncHandler, beatstarsSlug, checkGraphQLErrors, extra_data_from_response, generate_id, get_beatstars_token, get_current_user, sleep } from "../utils";
 import { BeatStarsTrack } from "../types/bs_types";
-import { api_error400, api_error500 } from '../errors';
+import { api_error400, api_error404, api_error500 } from '../errors';
+import { uploadFileToS3 } from "../aws";
+
+import { db } from '../db'
+import { ASSET_TYPE } from '../constants';
 
 export const bs_router = express.Router()
 
@@ -38,7 +42,6 @@ bs_router.post(
     const mimetype = {
       'audio/vnd.wave': 'audio/wav',
     }[file.mimetype] ?? file.mimetype
-    console.log({ original_mimetype: file.mimetype, mimetype, extension: file.originalname })
 
     // sanity check
     if (file.buffer.length !== file.size) {
@@ -95,24 +98,30 @@ bs_router.post(
       return;
     }
 
-    const asset = assetBody.data.create;
+    const bs_asset = assetBody.data.create;
+
+    // Generate S3 key for own bucket
+    const asset_type = mimetype.startsWith('audio') ? 'beats' : 'thumbnails';
+    const s3_key = `${asset_type}/${Date.now()}_${beatstars_slug}`;
 
     /* --------------------------------------------------
-       2) GET S3 SIGNED PARAMS
+       2) PARALLEL UPLOAD: BeatStars S3 + Own S3
     -------------------------------------------------- */
 
+    // Prepare BeatStars upload params
     const params = new URLSearchParams({
       filename: beatstars_slug,
-      type: asset.file.type,
-      "metadata[asset-id]": asset.id,
+      type: bs_asset.file.type,
+      "metadata[asset-id]": bs_asset.id,
       "metadata[name]": beatstars_slug,
-      "metadata[type]": asset.file.type,
+      "metadata[type]": bs_asset.file.type,
       "metadata[content-type]": mimetype,
       "metadata[version]": "2",
       "metadata[user]": process.env.BS_USER_ID ?? "",
       "metadata[env]": "prod"
     });
 
+    // Get BeatStars S3 params
     const s3ParamsRes = await fetch(
       `https://uppy-v4.beatstars.net/s3/params?${params.toString()}`
     );
@@ -124,44 +133,55 @@ bs_router.post(
     }
 
     const { url, fields } = await s3ParamsRes.json();
-
     console.log({ url, fields: JSON.stringify(fields, null, 2) })
 
-    /* --------------------------------------------------
-       3) UPLOAD TO S3 (USAR URL EXACTA)
-    -------------------------------------------------- */
-
+    // Prepare BeatStars upload form
     const form = new FormData();
-
     Object.entries(fields).forEach(([key, value]) => {
       form.append(key, value as string);
     });
-
     const arrayBuffer = Uint8Array.from(file.buffer).buffer;
-
     const blob = new Blob([arrayBuffer], { type: mimetype });
     form.append("file", blob, fields["x-amz-meta-name"]);
 
-    const s3UploadRes = await fetch(url, {
-      method: "POST",
-      body: form
-    });
+    // Execute both uploads in parallel
+    const [beatstarsUploadRes, ownS3Url] = await Promise.all([
+      // BeatStars S3 upload
+      fetch(url, { method: "POST", body: form }),
+      // Own S3 upload
+      uploadFileToS3(file.buffer, s3_key, mimetype)
+    ]);
 
-    const text = await s3UploadRes.text();
+    // Check BeatStars upload result
+    const text = await beatstarsUploadRes.text();
     console.log({ text: JSON.stringify(text, null, 2) })
-    if (s3UploadRes.status !== 201) {
-      api_error500(`S3 upload failed: ${text}`);
+    if (beatstarsUploadRes.status !== 201) {
+      api_error500(`BeatStars S3 upload failed: ${text}`);
       return;
     }
 
-    /* --------------------------------------------------
-       DONE
-    -------------------------------------------------- */
+    console.log({ ownS3Url })
 
-    res.json({
-      assetId: asset.id,
-      status: "UPLOADED"
-    });
+
+    const id_asset = generate_id()
+    await db.asset.create({
+      data: {
+        id:id_asset,
+        name: beatstars_slug,
+        type: mimetype.startsWith('audio') ? ASSET_TYPE.BEAT : ASSET_TYPE.THUMBNAIL,
+        beatstars_id: bs_asset.id,
+        s3_key: s3_key,
+      }
+    })
+
+      /* --------------------------------------------------
+         DONE
+      -------------------------------------------------- */
+
+      res.json({
+        id_asset,
+        status: "UPLOADED"
+      });
   })
 );
 
@@ -186,6 +206,26 @@ bs_router.post('/publish',
       if (publish_date !== null && isNaN(publish_date.getTime())) {
         return api_error400('Invalid publish_at date')
       }
+
+      const beat = await db.asset.findUnique({
+        where: {
+          id: beat_id_asset,
+        }
+      })
+
+      if(beat === null){
+        return api_error404('Beat not found')
+      }
+
+      const thumbnnail = await db.asset.findUnique({
+        where: {
+          id: thumbnail_id_asset,
+        }
+      })
+      if(thumbnnail === null){
+        return api_error404('Thumbnnail not found')
+      }
+
 
       const token = await get_beatstars_token(user.id)
       const headers = {
@@ -218,17 +258,23 @@ bs_router.post('/publish',
         }
       } = await add_track_response.json()
 
-      const id_track = add_track_body.data.addTrack.id
+      const beatstars_id_track = add_track_body.data.addTrack.id
 
+      if(beat.beatstars_id === null){
+        return api_error400('Invalid beat: not uploaded')
+      }
 
+      if(thumbnnail.beatstars_id === null){
+        return api_error400('Invalid thumbnnail: not uploaded')
+      }
       const attach_audio_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=attachMainAudio", {
         method: "POST",
         headers,
         body: JSON.stringify({
           "operationName": "attachMainAudio",
           "variables": {
-            "id": id_track,
-            "assetId": beat_id_asset,
+            "id": beatstars_id_track,
+            "assetId": beat.beatstars_id,
           },
           "query": "mutation attachMainAudio($id: String!, $assetId: String!) {\n  attachMainAudioFile(id: $id, assetId: $assetId, encodeRelatedFiles: false)\n}\n"
         }),
@@ -243,7 +289,7 @@ bs_router.post('/publish',
         headers,
         body: JSON.stringify({
           "operationName": "trackFormAttachArtwork",
-          "variables": { "itemId": id_track, "assetId": thumbnail_id_asset },
+          "variables": { "itemId": beatstars_id_track, "assetId": thumbnail_id_asset },
           "query": "mutation trackFormAttachArtwork($itemId: String!, $assetId: String!) {\n  attachArtwork(itemId: $itemId, assetId: $assetId)\n}"
         }),
       })
@@ -256,7 +302,7 @@ bs_router.post('/publish',
       const raw = JSON.stringify({
         "operationName": "PublishTrackForm",
         "variables": {
-          "id": id_track,
+          "id": beatstars_id_track,
           "track": {
             "category": "BEAT",
             "description": "",
@@ -310,7 +356,7 @@ bs_router.post('/publish',
           body: JSON.stringify({
             "operationName": "GetTrack",
             "variables": {
-              "id": id_track
+              "id": beatstars_id_track
             },
             "query": "query GetTrack($id: String!) {\n  member {\n    id\n    inventory {\n      track(id: $id) {\n        ...trackForm\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n}\n\nfragment trackForm on Track {\n  ...trackFormTrackDetails\n  freeDownloadSettings {\n    enabled\n    fileType\n    mode\n    socialPlatforms {\n      beatStars\n      twitter\n      soundCloud\n      __typename\n    }\n    __typename\n  }\n  contentIdByTrackId {\n    ...trackFormContentIdDetails\n    __typename\n  }\n  collaborations {\n    ...trackFormCollaboration\n    __typename\n  }\n  metadata {\n    ...trackFormMetadata\n    __typename\n  }\n  artwork {\n    ...trackFormArtwork\n    __typename\n  }\n  profile {\n    ...trackFormMemberProfile\n    __typename\n  }\n  bundle {\n    ...trackFormBundle\n    __typename\n  }\n  thirdPartyLoopsAndSample {\n    title\n    source\n    __typename\n  }\n  voloco {\n    ...exposedTrackVolocoConfiguration\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormTrackDetails on Track {\n  id\n  description\n  title\n  visibility\n  status\n  releaseDate\n  category\n  created\n  excludeFromBulkDiscounts\n  url\n  shareUrl\n  proPageUrl\n  proPageShareUrl\n  customStream\n  openAIGenerationCount\n  __typename\n}\n\nfragment trackFormContentIdDetails on ContentIdTrack {\n  id\n  title\n  dsps {\n    ...trackFormDsp\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormDsp on ContentIdDsp {\n  id\n  name\n  status\n  logo {\n    name\n    bucket\n    url\n    assetId\n    __typename\n  }\n  icon {\n    name\n    bucket\n    url\n    assetId\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormCollaboration on Collaboration {\n  profitShare\n  publishingShare\n  ugcShare\n  role\n  status\n  guestCollaborator {\n    ...trackFormGuestCollaborator\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormGuestCollaborator on Profile {\n  displayName\n  memberId\n  avatar {\n    sizes {\n      small\n      __typename\n    }\n    fitInUrl(width: 100, height: 100)\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormMetadata on Metadata {\n  tags\n  genres {\n    key\n    value\n    __typename\n  }\n  moods {\n    key\n    value\n    __typename\n  }\n  moodValence {\n    key\n    value\n    __typename\n  }\n  keyNote {\n    key\n    value\n    __typename\n  }\n  instrumentation {\n    key\n    value\n    __typename\n  }\n  instruments {\n    key\n    value\n    __typename\n  }\n  vocalPresence {\n    key\n    value\n    __typename\n  }\n  vocalGender {\n    key\n    value\n    __typename\n  }\n  energy {\n    key\n    value\n    __typename\n  }\n  energyVariation {\n    key\n    value\n    __typename\n  }\n  exclusive\n  free\n  bpmDouble\n  __typename\n}\n\nfragment trackFormArtwork on Image {\n  fitInUrl(width: 300, height: 300)\n  assetId\n  sizes {\n    small\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormMemberProfile on Profile {\n  username\n  memberId\n  avatar {\n    assetId\n    fitInUrl(width: 100, height: 100)\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormBundle on TrackBundle {\n  progress\n  error\n  errorPart\n  mainAudioFile {\n    ...trackFormAudioFile\n    __typename\n  }\n  stemsFile {\n    ...trackFormBinaryFile\n    __typename\n  }\n  stream {\n    ...trackFormAudioFile\n    __typename\n  }\n  __typename\n}\n\nfragment trackFormAudioFile on Audio {\n  duration\n  extension\n  encode\n  assetId\n  name\n  fullName\n  url\n  type\n  signedUrl\n  size\n  __typename\n}\n\nfragment trackFormBinaryFile on Binary {\n  extension\n  assetId\n  name\n  fullName\n  url\n  type\n  signedUrl\n  size\n  contentType\n  __typename\n}\n\nfragment exposedTrackVolocoConfiguration on ExposedTrackVolocoConfiguration {\n  contentSharing {\n    existsInVoloco\n    optOut\n    __typename\n  }\n  __typename\n}\n"
           }),
@@ -330,7 +376,6 @@ bs_router.post('/publish',
         } = await check_track_response.json()
         const check_track_graphql_errors = checkGraphQLErrors(check_track_body)
 
-        console.log({ check_track_body: JSON.stringify(check_track_body, null, 2) })
 
         if (check_track_graphql_errors.hasErrors) {
           api_error500(check_track_graphql_errors.messages.join(' - '))
@@ -345,10 +390,6 @@ bs_router.post('/publish',
         has_bundle = bundle !== null && bundle.progress === 'COMPLETE'
       }
 
-      // if (has_bundle === false) {
-      //   api_error500('Attach timeout')
-      // }
-      //
       const publish_track_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=PublishTrackForm", {
         method: "POST",
         headers,
@@ -362,7 +403,6 @@ bs_router.post('/publish',
         };
         errors?: any[];
       } = await publish_track_response.json();
-      console.log({ publish_track_body: JSON.stringify(publish_track_body, null, 2) })
 
       const graphql_errors = checkGraphQLErrors(publish_track_body)
       if (
@@ -374,9 +414,22 @@ bs_router.post('/publish',
         return
       }
 
+      const track_id = generate_id()
+      await db.track.create({
+        data: {
+          id: track_id,
+          id_user: user.id,
+          name: track_name,
+          beatstars_id_track,
+          beatstars_url: publish_track_body.data.publishTrack.shareUrl,
+          id_beat: beat_id_asset,
+          publish_at: publish_date,
+          id_thumbnail: thumbnail_id_asset,
+        }
+      })
+
       res.json({
-        id_asset: beat_id_asset,
-        id_track,
+        id_track: track_id,
         share_link: publish_track_body.data.publishTrack.shareUrl,
       })
     }

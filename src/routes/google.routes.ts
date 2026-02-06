@@ -1,12 +1,11 @@
 import express from 'express'
 import { google } from 'googleapis';
-import { api_error400 } from '../errors';
-import multer from 'multer'
-import { buffer_to_stream, generate_video, get_current_user } from '../utils';
+import { api_error400, api_error500 } from '../errors';
+import { buffer_to_stream, generate_video, get_current_user, youtubeUrl } from '../utils';
 import { get_google_client } from '../google_auth';
+import { db } from '../db'
+import { downloadFileFromS3, invokeVideoLambda } from '../aws';
 
-
-const upload = multer({ storage: multer.memoryStorage() }) // todo en memoria
 export const google_router = express.Router();
 
 // Ruta GET /google
@@ -81,50 +80,85 @@ google_router.get('/connect', async (req, res) => {
 
 google_router.post(
   '/upload-youtube',
-  upload.fields([
-    { name: 'audio', maxCount: 1 },
-    { name: 'thumbnail', maxCount: 1 },
-  ]),
   async (req, res) => {
     const user = await get_current_user(req)
     const google_client = await get_google_client(user.id)
 
     try {
-      const files = req.files as { [fieldname: string]: Express.Multer.File[] }
-      const bs_url: string = req.body.bs_url
-      const name: string = req.body.name
-      const publish_at: string | null = req.body.publish_at ?? null
+      const id_track: string | null = req.body.id_track ?? null
 
-      if (typeof bs_url !== 'string') api_error400('Invalid bs_url')
-      if (typeof name !== 'string') api_error400('Invalid name')
+      if (typeof id_track !== 'string') return api_error400('Invalid track')
 
-      const publish_date = publish_at === null ? null : new Date(publish_at)
+
+      const track = await db.track.findUnique({
+        where: { id: id_track }
+      })
+
+      if (track === null) return api_error400('Track not found')
+
+      const publish_date = track.publish_at
       if (publish_date !== null && isNaN(publish_date.getTime())) {
         return api_error400('Invalid publish_at date')
       }
 
-      if (!files || !files['audio'] || !files['thumbnail']) {
-        return res.status(400).json({ success: false, message: 'Faltan archivos' })
+      let videoBuffer: Buffer;
+
+      // Get assets from database (both production and local)
+      const beatAsset = await db.asset.findUnique({
+        where: { id: track.id_beat }
+      });
+
+      const thumbnailAsset = await db.asset.findUnique({
+        where: { id: track.id_thumbnail }
+      });
+
+      if (!beatAsset?.s3_key) {
+        return api_error400('Beat not found in S3');
       }
 
-      const audioBuffer = files['audio'][0].buffer
-      const thumbBuffer = files['thumbnail'][0].buffer
+      if (!thumbnailAsset?.s3_key) {
+        return api_error400('Thumbnail not found in S3');
+      }
 
-      // Generar video
-      const videoBuffer = await generate_video(audioBuffer, thumbBuffer)
-      console.log('Video generated: ' + name)
+      const isProduction = process.env.NODE_ENV === 'production';
+
+      if (isProduction) {
+        // Production: Use Lambda to generate video
+        console.log('Using Lambda for video generation in production');
+
+        // Invoke Lambda
+        const videoS3Key = await invokeVideoLambda(
+          beatAsset.s3_key,
+          thumbnailAsset.s3_key,
+          track.name
+        );
+
+        console.log('Lambda returned S3 key:', videoS3Key);
+
+        // Download video from S3 using SDK
+        videoBuffer = await downloadFileFromS3(videoS3Key);
+
+        console.log('Video downloaded from S3: ' + track.name);
+      } else {
+        // Development: Download from S3 and generate video locally
+        console.log('Development: Downloading assets from S3 for local video generation');
+
+        const audioBuffer = await downloadFileFromS3(beatAsset.s3_key);
+        const thumbBuffer = await downloadFileFromS3(thumbnailAsset.s3_key);
+
+        videoBuffer = await generate_video(audioBuffer, thumbBuffer)
+        console.log('Video generated locally: ' + track.name)
+      }
 
       // Subir a YouTube
       const youtube = google.youtube({ version: 'v3', auth: google_client })
-
-      console.log({ publish_date: publish_date?.toISOString() })
 
       const response = await youtube.videos.insert({
         part: ['snippet', 'status'],
         requestBody: {
           snippet: {
-            title: name,
-            description: `get your license: ${bs_url}
+            title: track.name,
+            description: `get your license: ${track.beatstars_url}
 
 
 
@@ -138,7 +172,17 @@ If you want to make profit with your music (upload your song to streaming servic
         media: { body: buffer_to_stream(videoBuffer) },
       })
 
-      res.json({ success: true, videoId: response.data.id })
+      const yt_id = response.data.id ?? null
+      if(!yt_id){
+        return api_error500('YT id not generated')
+      }
+
+      await db.track.update({
+        where: {id: track.id},
+        data: { yt_url: youtubeUrl(yt_id)}
+      })
+
+      res.json({ success: true, videoId: yt_id })
     } catch (err) {
       console.error(err)
       res.status(500).json({ success: false, error: err })

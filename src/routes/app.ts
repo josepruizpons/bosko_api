@@ -28,6 +28,7 @@ const allowedOrigins = process.env.NODE_ENV === "production"
     "http://localhost:5173",
     'http://localhost:5176',
     "https://localhost:5173",
+    "https://localhost:5174",
     'https://localhost:5176',
   ];
 
