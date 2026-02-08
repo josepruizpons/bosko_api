@@ -289,7 +289,7 @@ bs_router.post('/publish',
         headers,
         body: JSON.stringify({
           "operationName": "trackFormAttachArtwork",
-          "variables": { "itemId": beatstars_id_track, "assetId": thumbnail_id_asset },
+          "variables": { "itemId": beatstars_id_track, "assetId": thumbnnail.beatstars_id},
           "query": "mutation trackFormAttachArtwork($itemId: String!, $assetId: String!) {\n  attachArtwork(itemId: $itemId, assetId: $assetId)\n}"
         }),
       })
