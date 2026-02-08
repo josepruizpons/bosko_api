@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "dev:debug": "tsx src/index.ts",
-    "build": "npx prisma db pull && npx prisma generate && tsc",
+    "build": "npx prisma generate && tsc",
     "start": "node dist/index.js",
+    "db:pull": "npx prisma db pull",
+    "db:generate": "npx prisma generate",
     "db": "npx prisma db pull && npx prisma generate"
   },
   "keywords": [],
