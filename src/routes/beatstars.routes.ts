@@ -326,7 +326,7 @@ bs_router.post('/publish',
             "releaseDate": publish_date?.toISOString() ?? (new Date()).toISOString(),
             "thirdPartyLoopsAndSample": [],
             "title": track_name,
-            "visibility": "PRIVATE",
+            "visibility": "PUBLIC",
             "boostCampaign": false,
             "freeDownloadSettings": {
               "enabled": false,
@@ -376,6 +376,7 @@ bs_router.post('/publish',
         } = await check_track_response.json()
         const check_track_graphql_errors = checkGraphQLErrors(check_track_body)
 
+        console.log(JSON.stringify(check_track_body, null, 2))
 
         if (check_track_graphql_errors.hasErrors) {
           api_error500(check_track_graphql_errors.messages.join(' - '))
