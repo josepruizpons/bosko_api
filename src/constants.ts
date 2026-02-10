@@ -13,4 +13,17 @@ export const CONNECTION_TYPES = {
   YOUTUBE: 'YOUTUBE',
 } as const
 
+// Track status is computed from DB fields (no persisted status column).
+export enum ComputedTrackStatus {
+  Created = 'created',
+  PartialAssets = 'partial_assets',
+  AssetsLinked = 'assets_linked',
+  AssetsUploadedBeatstars = 'assets_uploaded_beatstars',
+  PublishedBeatstars = 'published_beatstars',
+  Completed = 'completed',
+  Error = 'error',
+}
+
+export const COMPUTED_TRACK_STATUS_VALUES = Object.values(ComputedTrackStatus) as ComputedTrackStatus[]
+
 export const PROD_HOSTNAME = 'https://api.boskofiles.com' as const

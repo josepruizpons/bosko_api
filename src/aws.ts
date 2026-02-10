@@ -1,7 +1,6 @@
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { breakpoint } from './debugger';
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION || 'eu-west-3',
@@ -93,7 +92,7 @@ export async function deleteFileFromS3(key: string): Promise<void> {
  */
 export async function getSignedFileUrl(
   key: string,
-  expirationSeconds: number = 3600
+  expirationSeconds: number = 1800
 ): Promise<string> {
   const command = new GetObjectCommand({
     Bucket: BUCKET,

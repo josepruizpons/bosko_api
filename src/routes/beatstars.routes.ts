@@ -2,7 +2,7 @@ import express from 'express'
 import multer from 'multer';
 import { asyncHandler, beatstarsSlug, checkGraphQLErrors, extra_data_from_response, generate_id, get_beatstars_token, get_current_user, sleep } from "../utils";
 import { BeatStarsTrack } from "../types/bs_types";
-import { api_error400, api_error404, api_error500 } from '../errors';
+import { api_error400, api_error403, api_error404, api_error500 } from '../errors';
 import { uploadFileToS3 } from "../aws";
 
 import { db } from '../db'
@@ -191,20 +191,48 @@ bs_router.post('/publish',
     async (req, res) => {
       const user = await get_current_user(req)
 
-      const track_name: string = req.body.name
-      const beat_id_asset: string = req.body.beat_id_asset
-      const thumbnail_id_asset: string = req.body.thumbnail_id_asset
-      const publish_at: string | null = req.body.publish_at ?? null
+      const id_track: string = req.body.id_track
 
-      if (
-        typeof track_name !== 'string'
-        || typeof thumbnail_id_asset !== 'string'
-        || typeof beat_id_asset !== 'string'
-      ) api_error400()
+      if (typeof id_track !== 'string') {
+        return api_error400('Missing required field: id_track')
+      }
+
+      // Buscar el track en la base de datos
+      const track = await db.track.findUnique({
+        where: { id: id_track }
+      })
+
+      if (track === null) {
+        return api_error404('Track not found')
+      }
+
+      // Verificar que el track pertenece al usuario autenticado
+      if (track.id_user !== user.id) {
+        return api_error403('You do not have permission to publish this track')
+      }
+
+      // Idempotent: if already published on BeatStars, return existing share link
+      if (track.beatstars_url) {
+        return res.json({
+          id_track: track.id,
+          share_link: track.beatstars_url ?? null,
+          beatstars_id_track: track.beatstars_id_track ?? null,
+        })
+      }
+
+      // Verificar que el track tiene los assets necesarios
+      if (!track.id_beat || !track.id_thumbnail) {
+        return api_error400('Track is missing required assets: beat or thumbnail')
+      }
+
+      const beat_id_asset = track.id_beat
+      const thumbnail_id_asset = track.id_thumbnail
+      const track_name = track.name
+      const publish_at = track.publish_at
 
       const publish_date = publish_at === null ? null : new Date(publish_at)
       if (publish_date !== null && isNaN(publish_date.getTime())) {
-        return api_error400('Invalid publish_at date')
+        return api_error400('Invalid publish_at date in track')
       }
 
       const beat = await db.asset.findUnique({
@@ -326,7 +354,7 @@ bs_router.post('/publish',
             "releaseDate": publish_date?.toISOString() ?? (new Date()).toISOString(),
             "thirdPartyLoopsAndSample": [],
             "title": track_name,
-            "visibility": "PRIVATE",
+            "visibility": "PUBLIC",
             "boostCampaign": false,
             "freeDownloadSettings": {
               "enabled": false,
@@ -414,23 +442,18 @@ bs_router.post('/publish',
         return
       }
 
-      const track_id = generate_id()
-      await db.track.create({
+      await db.track.update({
+        where: { id: track.id },
         data: {
-          id: track_id,
-          id_user: user.id,
-          name: track_name,
           beatstars_id_track,
           beatstars_url: publish_track_body.data.publishTrack.shareUrl,
-          id_beat: beat_id_asset,
-          publish_at: publish_date,
-          id_thumbnail: thumbnail_id_asset,
         }
       })
 
       res.json({
-        id_track: track_id,
+        id_track: track.id,
         share_link: publish_track_body.data.publishTrack.shareUrl,
+        beatstars_id_track,
       })
     }
   )
