@@ -1,6 +1,7 @@
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { api_error500 } from './errors';
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION || 'eu-west-3',
@@ -42,7 +43,7 @@ export async function uploadFileToS3(
   await s3Client.send(command);
 
   // Return the public URL
-  return `https://${BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+  return await getSignedFileUrl(key)
 }
 
 /**
@@ -85,6 +86,34 @@ export async function deleteFileFromS3(key: string): Promise<void> {
 }
 
 /**
+ * Stream a file from S3
+ * @param key - S3 key (path/filename)
+ * @returns Object with stream and metadata
+ */
+export async function streamFileFromS3(key: string): Promise<{
+  stream: ReadableStream;
+  contentType: string | undefined;
+  contentLength: number | undefined;
+}> {
+  const command = new GetObjectCommand({
+    Bucket: BUCKET,
+    Key: key,
+  });
+
+  const response = await s3Client.send(command);
+
+  if (!response.Body) {
+    throw new Error(`File not found: ${key}`);
+  }
+
+  return {
+    stream: response.Body as ReadableStream,
+    contentType: response.ContentType,
+    contentLength: response.ContentLength,
+  };
+}
+
+/**
  * Generate a signed URL for temporary access to a file
  * @param key - S3 key (path/filename)
  * @param expirationSeconds - URL expiration time in seconds (default: 3600)
@@ -99,9 +128,16 @@ export async function getSignedFileUrl(
     Key: key,
   });
 
-  return await getSignedUrl(s3Client, command, {
-    expiresIn: expirationSeconds,
-  });
+  try {
+    return await getSignedUrl(s3Client, command, {
+      expiresIn: expirationSeconds,
+    });
+
+  } catch (error) {
+    console.log(error)
+    api_error500()
+    return ''
+  }
 }
 
 const lambdaClient = new LambdaClient({

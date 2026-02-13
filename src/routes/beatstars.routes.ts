@@ -1,58 +1,34 @@
 import express from 'express'
-import multer from 'multer';
-import { asyncHandler, beatstarsSlug, checkGraphQLErrors, extra_data_from_response, generate_id, get_beatstars_token, get_current_user, sleep } from "../utils";
+import { asyncHandler, beatstarsSlug, checkGraphQLErrors, extra_data_from_response, get_beatstars_token, get_current_user, sleep } from "../utils";
 import { BeatStarsTrack } from "../types/bs_types";
 import { api_error400, api_error403, api_error404, api_error500 } from '../errors';
-import { uploadFileToS3 } from "../aws";
+import { downloadFileFromS3 } from "../aws";
 
-import { db } from '../db'
-import { ASSET_TYPE } from '../constants';
+import { db, track_include } from '../db'
+import { db_asset_to_asset, db_track_to_track } from '../mappers';
 
 export const bs_router = express.Router()
 
-
-bs_router.get('/login',
-  asyncHandler(
-    async (req, res) => {
-      const user = await get_current_user(req)
-      res.json({ token: (await get_beatstars_token(user.id)) })
-    }
-  ))
-
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 1024 * 1024 * 500 // 500MB (ajusta si quieres)
-  }
-});
-
 bs_router.post(
   '/upload',
-  upload.single('file'),
   asyncHandler(async (req, res) => {
     const user = await get_current_user(req)
 
-    const file = req.file;
-    if (!file || !file.buffer || file.size === 0) {
-      api_error400('Invalid file');
-      return;
-    }
+    const id_asset: string | null = req.body.id_asset;
+    if (id_asset === null) return api_error404('Asset not found')
 
-    const mimetype = {
-      'audio/vnd.wave': 'audio/wav',
-    }[file.mimetype] ?? file.mimetype
-
-    // sanity check
-    if (file.buffer.length !== file.size) {
-      api_error500('Corrupted upload buffer');
-      return;
-    }
+    const db_asset = await db.asset.findUnique({
+      where: {
+        id: id_asset
+      }
+    })
+    if (db_asset === null) return api_error404('Asset not found')
 
     const token = await get_beatstars_token(user.id);
 
-    const beatstars_slug = beatstarsSlug(file.originalname)
-    console.log({ beatstars_slug })
+    const beatstars_slug = beatstarsSlug(db_asset.name)
+
+    const file = await downloadFileFromS3(db_asset.s3_key)
 
     /* --------------------------------------------------
        1) CREATE ASSET FILE (GraphQL)
@@ -71,7 +47,7 @@ bs_router.post(
           variables: {
             file: {
               fileName: beatstars_slug,
-              contentType: mimetype
+              contentType: db_asset.mimetype
             }
           },
           query: `
@@ -100,12 +76,8 @@ bs_router.post(
 
     const bs_asset = assetBody.data.create;
 
-    // Generate S3 key for own bucket
-    const asset_type = mimetype.startsWith('audio') ? 'beats' : 'thumbnails';
-    const s3_key = `${asset_type}/${Date.now()}_${beatstars_slug}`;
-
     /* --------------------------------------------------
-       2) PARALLEL UPLOAD: BeatStars S3 + Own S3
+       2) UPLOAD TO BEATSTARS S3
     -------------------------------------------------- */
 
     // Prepare BeatStars upload params
@@ -115,9 +87,9 @@ bs_router.post(
       "metadata[asset-id]": bs_asset.id,
       "metadata[name]": beatstars_slug,
       "metadata[type]": bs_asset.file.type,
-      "metadata[content-type]": mimetype,
+      "metadata[content-type]": db_asset.mimetype ?? 'image/png', // TODO: make mandatory field in db
       "metadata[version]": "2",
-      "metadata[user]": process.env.BS_USER_ID ?? "",
+      // "metadata[user]": process.env.BS_USER_ID ?? "",
       "metadata[env]": "prod"
     });
 
@@ -140,17 +112,11 @@ bs_router.post(
     Object.entries(fields).forEach(([key, value]) => {
       form.append(key, value as string);
     });
-    const arrayBuffer = Uint8Array.from(file.buffer).buffer;
-    const blob = new Blob([arrayBuffer], { type: mimetype });
+    const blob = new Blob([file.buffer as unknown as BlobPart], { type: db_asset.mimetype ?? 'image/png' });
     form.append("file", blob, fields["x-amz-meta-name"]);
 
-    // Execute both uploads in parallel
-    const [beatstarsUploadRes, ownS3Url] = await Promise.all([
-      // BeatStars S3 upload
-      fetch(url, { method: "POST", body: form }),
-      // Own S3 upload
-      uploadFileToS3(file.buffer, s3_key, mimetype)
-    ]);
+    // Upload to BeatStars
+    const beatstarsUploadRes = await fetch(url, { method: "POST", body: form });
 
     // Check BeatStars upload result
     const text = await beatstarsUploadRes.text();
@@ -160,28 +126,15 @@ bs_router.post(
       return;
     }
 
-    console.log({ ownS3Url })
+    // Save beatstars_id to database
+    const updated_asset = await db.asset.update({
+      where: { id: id_asset },
+      data: { beatstars_id: bs_asset.id }
+    });
 
 
-    const id_asset = generate_id()
-    await db.asset.create({
-      data: {
-        id:id_asset,
-        name: beatstars_slug,
-        type: mimetype.startsWith('audio') ? ASSET_TYPE.BEAT : ASSET_TYPE.THUMBNAIL,
-        beatstars_id: bs_asset.id,
-        s3_key: s3_key,
-      }
-    })
-
-      /* --------------------------------------------------
-         DONE
-      -------------------------------------------------- */
-
-      res.json({
-        id_asset,
-        status: "UPLOADED"
-      });
+    const asset = await db_asset_to_asset(updated_asset, url)
+    res.json(asset);
   })
 );
 
@@ -241,7 +194,7 @@ bs_router.post('/publish',
         }
       })
 
-      if(beat === null){
+      if (beat === null) {
         return api_error404('Beat not found')
       }
 
@@ -250,7 +203,7 @@ bs_router.post('/publish',
           id: thumbnail_id_asset,
         }
       })
-      if(thumbnnail === null){
+      if (thumbnnail === null) {
         return api_error404('Thumbnnail not found')
       }
 
@@ -288,11 +241,11 @@ bs_router.post('/publish',
 
       const beatstars_id_track = add_track_body.data.addTrack.id
 
-      if(beat.beatstars_id === null){
+      if (beat.beatstars_id === null) {
         return api_error400('Invalid beat: not uploaded')
       }
 
-      if(thumbnnail.beatstars_id === null){
+      if (thumbnnail.beatstars_id === null) {
         return api_error400('Invalid thumbnnail: not uploaded')
       }
       const attach_audio_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=attachMainAudio", {
@@ -317,7 +270,7 @@ bs_router.post('/publish',
         headers,
         body: JSON.stringify({
           "operationName": "trackFormAttachArtwork",
-          "variables": { "itemId": beatstars_id_track, "assetId": thumbnnail.beatstars_id},
+          "variables": { "itemId": beatstars_id_track, "assetId": thumbnnail.beatstars_id },
           "query": "mutation trackFormAttachArtwork($itemId: String!, $assetId: String!) {\n  attachArtwork(itemId: $itemId, assetId: $assetId)\n}"
         }),
       })
@@ -442,19 +395,17 @@ bs_router.post('/publish',
         return
       }
 
-      await db.track.update({
+      const db_track = await db.track.update({
         where: { id: track.id },
         data: {
           beatstars_id_track,
           beatstars_url: publish_track_body.data.publishTrack.shareUrl,
-        }
+        },
+        include: track_include
       })
 
-      res.json({
-        id_track: track.id,
-        share_link: publish_track_body.data.publishTrack.shareUrl,
-        beatstars_id_track,
-      })
+      const updated_track = await db_track_to_track(db_track)
+      res.json(updated_track)
     }
   )
 )

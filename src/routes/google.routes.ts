@@ -3,8 +3,9 @@ import { google } from 'googleapis';
 import { api_error400, api_error500 } from '../errors';
 import { buffer_to_stream, generate_video, get_current_user, youtubeUrl } from '../utils';
 import { get_google_client } from '../google_auth';
-import { db } from '../db'
+import { db, track_include } from '../db'
 import { deleteFileFromS3, downloadFileFromS3, invokeVideoLambda } from '../aws';
+import { db_track_to_track } from '../mappers';
 
 export const google_router = express.Router();
 
@@ -142,9 +143,10 @@ If you want to make profit with your music (upload your song to streaming servic
         return api_error500('YT id not generated')
       }
 
-      await db.track.update({
+      const db_track = await db.track.update({
         where: {id: track.id},
-        data: { yt_url: youtubeUrl(yt_id)}
+        data: { yt_url: youtubeUrl(yt_id)},
+        include: track_include
       })
 
       // Delete temporary video from S3 (production only)
@@ -158,7 +160,8 @@ If you want to make profit with your music (upload your song to streaming servic
         }
       }
 
-      res.json({ success: true, videoId: yt_id })
+      const updated_track = await db_track_to_track(db_track)
+      res.json(updated_track)
     } catch (err) {
       console.error(err)
       res.status(500).json({ success: false, error: err })

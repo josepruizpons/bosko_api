@@ -1,4 +1,12 @@
 
+export const TRACK_STATUS = {
+  DRAFT: 'draft',
+  LINKED_ASSETS: 'linked_assets',
+  BS_UPLOADED: 'BS_UPLOADED',
+  BS_PUBLISHED: 'bs_published',
+  YT_PUBLISHED: 'yt_published',
+  LOADING: 'loading',
+} as const
 export const BS_ASSET_TYPE = {
   AUDIO: 'AUDIO',
   IMAGE: 'IMAGE',
