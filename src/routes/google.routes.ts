@@ -149,6 +149,25 @@ If you want to make profit with your music (upload your song to streaming servic
         include: track_include
       })
 
+      // Delete beat and thumbnail assets from S3 after successful YouTube upload
+      if (beatAsset?.s3_key) {
+        try {
+          await deleteFileFromS3(beatAsset.s3_key);
+          console.log('Beat deleted from S3:', beatAsset.s3_key);
+        } catch (deleteErr) {
+          console.error('Error deleting beat from S3:', deleteErr);
+        }
+      }
+
+      if (thumbnailAsset?.s3_key) {
+        try {
+          await deleteFileFromS3(thumbnailAsset.s3_key);
+          console.log('Thumbnail deleted from S3:', thumbnailAsset.s3_key);
+        } catch (deleteErr) {
+          console.error('Error deleting thumbnail from S3:', deleteErr);
+        }
+      }
+
       // Delete temporary video from S3 (production only)
       if (isProduction && videoS3Key) {
         try {
