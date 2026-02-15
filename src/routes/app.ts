@@ -5,6 +5,8 @@ import cookieParser from "cookie-parser";
 import "dotenv/config"; // carga automáticamente process.env
 import { google_router } from "./google.routes";
 import { bs_router } from "./beatstars.routes";
+import { tracks_router } from "./tracks.router";
+import { assets_router } from "./assets.router";
 import { errorHandler, get_current_user } from "../utils";
 
 import { db } from "../db"
@@ -130,6 +132,8 @@ api_router.get('/check', async (req, res) => {
 })
 api_router.use('/bs', bs_router)
 api_router.use('/google', google_router)
+api_router.use('/tracks', tracks_router)
+api_router.use('/assets', assets_router)
 
 app.use('/api', api_router)
 app.use(errorHandler);

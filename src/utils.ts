@@ -8,7 +8,9 @@ import { api_error403, api_error500, ApiError } from "./errors";
 import { BeatStarsLoginResponse, GraphQLResponse } from "./types/bs_types";
 import { db } from './db';
 import { Prisma } from './generated/prisma/client';
-import { CONNECTION_TYPES } from './constants';
+import { CONNECTION_TYPES, TRACK_STATUS } from './constants';
+import { DbTrack } from './types/db_types';
+import { TrackStatus } from './types/types';
 
 export async function get_beatstars_token(user_id: number) {
   const bs_oauth = await db.oauth.findFirst({
@@ -50,7 +52,7 @@ export const errorHandler: ErrorRequestHandler = (
   __
 ) => {
   if (err instanceof ApiError) {
-    console.log({err})
+    console.log({ err })
     res.status(err.status_code).json({
       error: err.code,
       message: err.message
@@ -208,4 +210,19 @@ export function generate_id(length = 11) {
 
 export function youtubeUrl(videoId: string) {
   return `https://www.youtube.com/watch?v=${videoId}`;
+}
+
+export function compute_track_status(db_track: DbTrack): TrackStatus {
+
+  if (db_track.yt_url !== null) return TRACK_STATUS.YT_PUBLISHED
+  if (db_track.beatstars_url !== null) return TRACK_STATUS.BS_PUBLISHED
+  if (db_track.beat && db_track.thumbnail) {
+    if (db_track.beat.beatstars_id && db_track.thumbnail.beatstars_id) {
+      return TRACK_STATUS.BS_UPLOADED
+    }
+
+    return TRACK_STATUS.LINKED_ASSETS
+  }
+
+  return TRACK_STATUS.DRAFT
 }

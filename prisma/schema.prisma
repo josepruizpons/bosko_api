@@ -17,7 +17,17 @@ model oauth {
   client_id         String             @db.VarChar(255)
   created_at        DateTime?          @default(now()) @db.Timestamp(6)
   e_connection_type e_connection_type? @relation(fields: [connection_type], references: [name], onDelete: Restrict, map: "oauth_e_connection_type_fk")
-  users             users?             @relation(fields: [id_user], references: [id], onDelete: NoAction, map: "oauth_users_fk")
+  user              users?             @relation(fields: [id_user], references: [id], onDelete: NoAction, map: "oauth_users_fk")
+}
+
+model e_connection_type {
+  name  String  @id(map: "e_connection_type_pk") @db.VarChar
+  oauth oauth[]
+}
+
+model e_asset_type {
+  name  String  @id(map: "e_asset_type_pk") @db.VarChar
+  asset asset[]
 }
 
 model users {
@@ -26,44 +36,39 @@ model users {
   password   String
   is_active  Boolean?  @default(true)
   created_at DateTime? @default(now()) @db.Timestamp(6)
+  asset      asset[]
   oauth      oauth[]
-  track      track[]
-}
-
-model e_connection_type {
-  name  String  @id(map: "e_connection_type_pk") @db.VarChar
-  oauth oauth[]
+  tracks     track[]
 }
 
 model asset {
-  id                              String       @id @db.Char(11)
-  name                            String       @db.VarChar
-  type                            String       @db.VarChar
-  created_at                      DateTime     @default(now()) @db.Timestamp(6)
-  beatstars_id                    String?      @db.VarChar
-  s3_key                          String       @db.VarChar
-  e_asset_type                    e_asset_type @relation(fields: [type], references: [name], map: "asset_e_asset_type_fk")
-  track_track_id_beatToasset      track[]      @relation("track_id_beatToasset")
-  track_track_id_thumbnailToasset track[]      @relation("track_id_thumbnailToasset")
-}
-
-model e_asset_type {
-  name  String  @id(map: "e_asset_type_pk") @db.VarChar
-  asset asset[]
+  id                  String       @id @db.Char(11)
+  name                String       @db.VarChar
+  type                String       @db.VarChar
+  created_at          DateTime     @default(now()) @db.Timestamp(6)
+  beatstars_id        String?      @db.VarChar
+  s3_key              String       @db.VarChar
+  mimetype            String?      @db.VarChar
+  id_user             Int?
+  e_asset_type        e_asset_type @relation(fields: [type], references: [name], map: "asset_e_asset_type_fk")
+  users               users?       @relation(fields: [id_user], references: [id], onDelete: Cascade, map: "asset_users_fk")
+  tracks_as_beat      track[]      @relation("track_beat")
+  tracks_as_thumbnail track[]      @relation("track_thumbnail")
 }
 
 model track {
-  id                              String    @id(map: "track_pk") @db.Char(11)
-  name                            String    @db.VarChar
-  id_user                         Int
-  id_beat                         String    @db.Char(11)
-  id_thumbnail                    String    @db.Char(11)
-  yt_url                          String?   @db.VarChar
-  created_at                      DateTime  @default(now()) @db.Timestamp(6)
-  beatstars_url                   String?   @db.VarChar
-  publish_at                      DateTime? @db.Timestamp(6)
-  beatstars_id_track              String?   @db.VarChar
-  asset_track_id_beatToasset      asset     @relation("track_id_beatToasset", fields: [id_beat], references: [id], onDelete: Cascade, map: "beat_fk")
-  asset_track_id_thumbnailToasset asset     @relation("track_id_thumbnailToasset", fields: [id_thumbnail], references: [id], onDelete: Cascade, map: "thumnbnail_fk")
-  users                           users     @relation(fields: [id_user], references: [id], onDelete: Cascade, map: "track_users_fk")
+  id                 String   @id(map: "track_pk") @db.Char(11)
+  name               String   @db.VarChar
+  id_user            Int
+  id_beat            String?  @db.Char(11)
+  id_thumbnail       String?  @db.Char(11)
+  yt_url             String?  @db.VarChar
+  created_at         DateTime @default(now()) @db.Timestamp(6)
+  beatstars_url      String?  @db.VarChar
+  publish_at         DateTime @default(now()) @db.Timestamp(6)
+  beatstars_id_track String?  @db.VarChar
+  error_message      String?  @db.VarChar
+  beat               asset?   @relation("track_beat", fields: [id_beat], references: [id], onDelete: Cascade, map: "beat_fk")
+  thumbnail          asset?   @relation("track_thumbnail", fields: [id_thumbnail], references: [id], onDelete: Cascade, map: "thumnbnail_fk")
+  user               users    @relation(fields: [id_user], references: [id], onDelete: Cascade, map: "track_users_fk")
 }

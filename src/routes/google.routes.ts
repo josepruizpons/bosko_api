@@ -3,8 +3,9 @@ import { google } from 'googleapis';
 import { api_error400, api_error500 } from '../errors';
 import { buffer_to_stream, generate_video, get_current_user, youtubeUrl } from '../utils';
 import { get_google_client } from '../google_auth';
-import { db } from '../db'
+import { db, track_include } from '../db'
 import { deleteFileFromS3, downloadFileFromS3, invokeVideoLambda } from '../aws';
+import { db_track_to_track } from '../mappers';
 
 export const google_router = express.Router();
 
@@ -28,55 +29,6 @@ google_router.get('/connect', async (req, res) => {
   res.json({ url })
 });
 
-// // Ruta GET /google/auth
-// google_router.get('/auth_callback', async (req, res) => {
-//   const user = await get_current_user(req)
-//   const google_client = await get_google_client(user.id)
-//   const code = req.query.code;
-//
-//   if (code === undefined || typeof code !== 'string') {
-//     api_error400('Invalid code')
-//     return
-//   }
-//
-//   //WARN: check if session applies to this endpoint
-//   const { tokens } = await google_client.getToken(code);
-//   const updatedOAuth = await db.oauth.updateMany({
-//     where: {
-//       id_user: user.id,
-//       connection_type: CONNECTION_TYPES.YOUTUBE,
-//     },
-//     data: {
-//       refresh_token: tokens.refresh_token ?? '',
-//     },
-//   });
-//
-//   console.log(updatedOAuth);
-//   console.log({ tokens })
-//   google_client.setCredentials(tokens);
-//   // Guarda refresh_token en BD
-//
-//   // RESPUESTA QUE CIERRA EL POPUP
-//   res.send(`
-//     <html>
-//       <body>
-//         <script>
-//           if (window.opener) {
-//             window.opener.postMessage(
-//               { type: "google-auth-success" },
-//               "${process.env.FRONTEND_URL}"
-//             );
-//           }
-//           window.close();
-//         </script>
-//         Autorización completada. Puedes cerrar esta ventana.
-//       </body>
-//     </html>
-//   `);
-// });
-//
-//
-//
 
 google_router.post(
   '/upload-youtube',
@@ -96,6 +48,11 @@ google_router.post(
 
       if (track === null) return api_error400('Track not found')
 
+      // Idempotent: if already uploaded, return existing URL
+      if (track.yt_url) {
+        return res.json({ success: true, yt_url: track.yt_url })
+      }
+
       const publish_date = track.publish_at
       if (publish_date !== null && isNaN(publish_date.getTime())) {
         return api_error400('Invalid publish_at date')
@@ -103,6 +60,14 @@ google_router.post(
 
       let videoBuffer: Buffer;
       let videoS3Key: string | undefined;
+
+      if (track.id_beat === null) {
+        return api_error400('Track is missing id_beat')
+      }
+
+      if (track.id_thumbnail === null) {
+        return api_error400('Track is missing id_thumbnail')
+      }
 
       // Get assets from database (both production and local)
       const beatAsset = await db.asset.findUnique({
@@ -178,10 +143,30 @@ If you want to make profit with your music (upload your song to streaming servic
         return api_error500('YT id not generated')
       }
 
-      await db.track.update({
+      const db_track = await db.track.update({
         where: {id: track.id},
-        data: { yt_url: youtubeUrl(yt_id)}
+        data: { yt_url: youtubeUrl(yt_id)},
+        include: track_include
       })
+
+      // Delete beat and thumbnail assets from S3 after successful YouTube upload
+      if (beatAsset?.s3_key) {
+        try {
+          await deleteFileFromS3(beatAsset.s3_key);
+          console.log('Beat deleted from S3:', beatAsset.s3_key);
+        } catch (deleteErr) {
+          console.error('Error deleting beat from S3:', deleteErr);
+        }
+      }
+
+      if (thumbnailAsset?.s3_key) {
+        try {
+          await deleteFileFromS3(thumbnailAsset.s3_key);
+          console.log('Thumbnail deleted from S3:', thumbnailAsset.s3_key);
+        } catch (deleteErr) {
+          console.error('Error deleting thumbnail from S3:', deleteErr);
+        }
+      }
 
       // Delete temporary video from S3 (production only)
       if (isProduction && videoS3Key) {
@@ -194,7 +179,8 @@ If you want to make profit with your music (upload your song to streaming servic
         }
       }
 
-      res.json({ success: true, videoId: yt_id })
+      const updated_track = await db_track_to_track(db_track)
+      res.json(updated_track)
     } catch (err) {
       console.error(err)
       res.status(500).json({ success: false, error: err })
