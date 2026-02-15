@@ -1,7 +1,9 @@
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { api_error500 } from './errors';
+import { createReadStream } from 'fs';
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION || 'eu-west-3',
@@ -22,25 +24,32 @@ if (!process.env.AWS_ID || !process.env.AWS_SECRET_KEY) {
 }
 
 /**
- * Upload a file to S3
- * @param buffer - File buffer
+ * Upload a file to S3 using multipart upload for better performance with large files
+ * @param filePath - Path to the file on disk
  * @param key - S3 key (path/filename)
  * @param contentType - MIME type
  * @returns The S3 URL of the uploaded file
  */
 export async function uploadFileToS3(
-  buffer: Buffer,
+  filePath: string,
   key: string,
   contentType: string
 ): Promise<string> {
-  const command = new PutObjectCommand({
-    Bucket: BUCKET,
-    Key: key,
-    Body: buffer,
-    ContentType: contentType,
+  const fileStream = createReadStream(filePath);
+
+  const upload = new Upload({
+    client: s3Client,
+    params: {
+      Bucket: BUCKET,
+      Key: key,
+      Body: fileStream,
+      ContentType: contentType,
+    },
+    queueSize: 4, // number of concurrent uploads
+    partSize: 5 * 1024 * 1024, // 5MB chunks
   });
 
-  await s3Client.send(command);
+  await upload.done();
 
   // Return the public URL
   return await getSignedFileUrl(key)

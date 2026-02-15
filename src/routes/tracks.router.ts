@@ -18,9 +18,10 @@ tracks_router.get('/pending',
           id_user: user.id,
         },
         include: track_include,
-        orderBy: {
-          created_at: 'desc'
-        }
+        orderBy: [
+          { publish_at: "asc" },
+          { created_at: "asc" }
+        ]
       })
       const tracks = await Promise.all(
         db_tracks.map(

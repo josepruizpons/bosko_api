@@ -6,11 +6,17 @@ import { uploadFileToS3, streamFileFromS3 } from "../aws";
 import { db } from '../db'
 import { ASSET_TYPE } from '../constants';
 import { db_asset_to_asset } from '../mappers';
+import { unlink } from 'fs/promises';
 
 export const assets_router = express.Router()
 
 const upload = multer({
-  storage: multer.memoryStorage(),
+  storage: multer.diskStorage({
+    destination: '/tmp/uploads',
+    filename: (_, file, cb) => {
+      cb(null, `${Date.now()}_${file.originalname}`);
+    }
+  }),
   limits: {
     fileSize: 1024 * 1024 * 500 // 500MB
   }
@@ -42,7 +48,7 @@ assets_router.post('/',
     const file = req.file;
     const type: string = req.body.type;
 
-    if (!file || !file.buffer || file.size === 0) {
+    if (!file || !file.path || file.size === 0) {
       return api_error400('Invalid file');
     }
 
@@ -66,7 +72,15 @@ assets_router.post('/',
     const s3_folder = type === ASSET_TYPE.BEAT ? 'beats' : 'thumbnails';
     const s3_key = `${s3_folder}/${Date.now()}_${file.originalname}`;
 
-    const url = await uploadFileToS3(file.buffer, s3_key, mimetype);
+    // Upload file from disk using multipart upload
+    const url = await uploadFileToS3(file.path, s3_key, mimetype);
+
+    // Clean up temp file
+    try {
+      await unlink(file.path);
+    } catch (err) {
+      console.warn('Failed to delete temp file:', err);
+    }
 
     const id_asset = generate_id();
     const db_asset = await db.asset.create({
