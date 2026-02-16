@@ -19,9 +19,21 @@ export type Track = {
   created_at: Date;
   name: string;
   beat: Asset | null,
-  thumbnail: Asset | null,
+  thumbnail: Asset | null;
   yt_url: string | null;
   beatstars_url: string | null;
   publish_at: Date;
   beatstars_id_track: string | null;
+}
+
+export type UserInfo = {
+  id: number;
+  email: string;
+  is_active: boolean;
+  created_at: Date;
+  last_publish_at: Date | null;
+  connections: {
+    youtube: boolean;
+    beatstars: boolean;
+  };
 }

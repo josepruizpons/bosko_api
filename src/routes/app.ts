@@ -11,6 +11,7 @@ import { errorHandler, get_current_user } from "../utils";
 
 import { db } from "../db"
 import { auth_router } from "./auth.routes";
+import { user_router } from "./user.routes";
 import { validate_session } from "../middlewares/session.middleware";
 import { get_google_client } from "../google_auth";
 import { api_error400 } from "../errors";
@@ -134,6 +135,7 @@ api_router.use('/bs', bs_router)
 api_router.use('/google', google_router)
 api_router.use('/tracks', tracks_router)
 api_router.use('/assets', assets_router)
+api_router.use('/user', user_router)
 
 app.use('/api', api_router)
 app.use(errorHandler);
