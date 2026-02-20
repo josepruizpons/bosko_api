@@ -16,7 +16,7 @@ export const ASSET_TYPE = {
   THUMBNAIL: 'THUMBNAIL',
 } as const
 
-export const CONNECTION_TYPES = {
+export const PLATFORMS = {
   BEATSTARS: 'BEATSTARS',
   YOUTUBE: 'YOUTUBE',
 } as const

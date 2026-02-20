@@ -8,14 +8,14 @@ import { api_error403, api_error500, ApiError } from "./errors";
 import { BeatStarsLoginResponse, GraphQLResponse } from "./types/bs_types";
 import { db } from './db';
 import { Prisma } from './generated/prisma/client';
-import { CONNECTION_TYPES, TRACK_STATUS } from './constants';
+import { PLATFORMS, TRACK_STATUS } from './constants';
 import { DbTrack } from './types/db_types';
-import { TrackStatus } from './types/types';
+import { Profile, TrackStatus, UserInfo } from './types/types';
 
 export async function get_beatstars_token(user_id: number) {
   const bs_oauth = await db.oauth.findFirst({
     where: {
-      connection_type: CONNECTION_TYPES.BEATSTARS,
+      connection_type: PLATFORMS.BEATSTARS,
       id_user: user_id,
 
     }
@@ -193,6 +193,8 @@ export async function get_current_user(req: Request) {
   return user as Prisma.usersModel
 
 }
+
+export async function get_profile(id_user: Profile['id_user'], id_profile: Profile['id'])
 
 
 const characterSet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_';

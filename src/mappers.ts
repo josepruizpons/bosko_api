@@ -1,7 +1,7 @@
 import { getSignedFileUrl } from "./aws";
-import { ASSET_TYPE } from "./constants";
-import { DbAsset, DbTrack } from "./types/db_types";
-import { Asset, AssetType, Track } from "./types/types";
+import { ASSET_TYPE, PLATFORMS } from "./constants";
+import { DbAsset, DbProfile, DbProfileConnection, DbTrack } from "./types/db_types";
+import { Asset, AssetType, BeatstarsMeta, Profile, ProfileConnection, Settings, Track, YoutubeMeta } from "./types/types";
 import { compute_track_status } from "./utils";
 
 export const db_track_to_track = async (db_track: DbTrack): Promise<Track> => {
@@ -61,4 +61,46 @@ export const db_asset_to_asset = async (db_asset: DbAsset, url?: string): Promis
     s3_uploaded: true,
     bs_uploaded: db_asset.beatstars_id !== null,
   }
+}
+
+export const db_profile_connection_to_connection = (
+  db_profile_connection: DbProfileConnection,
+): ProfileConnection => {
+  const base = {
+    id: db_profile_connection.id,
+    id_profile: db_profile_connection.id_profile,
+    created_at: db_profile_connection.created_at,
+  }
+
+  switch (db_profile_connection.platform) {
+    case PLATFORMS.YOUTUBE:
+      return {
+        ...base,
+        platform: PLATFORMS.YOUTUBE,
+        meta: db_profile_connection.meta as YoutubeMeta,
+      }
+    case PLATFORMS.BEATSTARS:
+      return {
+        ...base,
+        platform: PLATFORMS.BEATSTARS,
+        meta: db_profile_connection.meta as BeatstarsMeta,
+      }
+    default:
+      throw new Error(`Unknown platform: ${db_profile_connection.platform}`)
+  }
+}
+
+export const db_profile_to_profile = (
+  db_profile: DbProfile,
+): Profile => {
+  return {
+    id: db_profile.id,
+    id_user: db_profile.id_user,
+    name: db_profile.name,
+    settings: db_profile.settings as Settings,
+    connections: db_profile.profile_connections.map(
+      conn => db_profile_connection_to_connection(conn)
+    )
+  }
+
 }

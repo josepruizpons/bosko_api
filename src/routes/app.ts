@@ -15,7 +15,7 @@ import { user_router } from "./user.routes";
 import { validate_session } from "../middlewares/session.middleware";
 import { get_google_client } from "../google_auth";
 import { api_error400 } from "../errors";
-import { CONNECTION_TYPES } from "../constants";
+import { PLATFORMS } from "../constants";
 
 const app = express();
 app.use(cookieParser());
@@ -82,7 +82,7 @@ app.get('/google/auth_callback', async (req, res) => {
   const updatedOAuth = await db.oauth.updateMany({
     where: {
       id_user: user.id,
-      connection_type: CONNECTION_TYPES.YOUTUBE,
+      connection_type: PLATFORMS.YOUTUBE,
     },
     data: {
       refresh_token: tokens.refresh_token ?? '',

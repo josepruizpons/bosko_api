@@ -1,8 +1,9 @@
 import express from 'express'
 import { get_current_user, asyncHandler } from "../utils";
 import { db } from '../db'
-import { CONNECTION_TYPES } from '../constants';
-import type { UserInfo } from '../types/types';
+import { PLATFORMS } from '../constants';
+import type { UserInfo, Settings } from '../types/types';
+import { db_profile_to_profile } from '../mappers';
 
 export const user_router = express.Router()
 
@@ -24,11 +25,18 @@ user_router.get('/info',
     })
 
     const hasYoutube = oauthConnections.some(
-      c => c.connection_type === CONNECTION_TYPES.YOUTUBE
+      c => c.connection_type === PLATFORMS.YOUTUBE
     )
     const hasBeatstars = oauthConnections.some(
-      c => c.connection_type === CONNECTION_TYPES.BEATSTARS
+      c => c.connection_type === PLATFORMS.BEATSTARS
     )
+
+    const db_profiles = await db.profiles.findMany({
+      where: { id_user: user.id },
+      include: {
+        profile_connections: true,
+      }
+    })
 
     const userInfo: UserInfo = {
       id: user.id,
@@ -39,7 +47,9 @@ user_router.get('/info',
       connections: {
         youtube: hasYoutube,
         beatstars: hasBeatstars
-      }
+      },
+      settings: user.settings as Settings,
+      profiles: db_profiles.map(p => db_profile_to_profile(p)),
     }
 
     res.json(userInfo)

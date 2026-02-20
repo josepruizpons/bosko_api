@@ -1,8 +1,9 @@
-import {ASSET_TYPE, TRACK_STATUS} from '../constants'
+import { ASSET_TYPE, PLATFORMS, TRACK_STATUS } from '../constants'
 export type EnumOptions<T> = T[keyof T];
 
 export type AssetType = EnumOptions<typeof ASSET_TYPE>
 export type TrackStatus = EnumOptions<typeof TRACK_STATUS>
+export type Platform = EnumOptions<typeof PLATFORMS>
 
 export type Asset = {
   id: string;
@@ -26,6 +27,35 @@ export type Track = {
   beatstars_id_track: string | null;
 }
 
+export type Settings = Record<string, string> //TODO:
+
+
+export type YoutubeMeta = {
+  description: string;
+}
+
+export type BeatstarsMeta = {
+  tags: string[];
+}
+
+export type ProfileConnection = {
+  id: string;
+  id_profile: string;
+  created_at: Date;
+}
+& (
+    | { platform: typeof PLATFORMS.YOUTUBE, meta: YoutubeMeta }
+    | { platform: typeof PLATFORMS.BEATSTARS, meta: BeatstarsMeta }
+  )
+
+export type Profile = {
+  id: string;
+  id_user: number;
+  name: string;
+  settings: Settings;
+  connections: ProfileConnection[];
+}
+
 export type UserInfo = {
   id: number;
   email: string;
@@ -36,4 +66,6 @@ export type UserInfo = {
     youtube: boolean;
     beatstars: boolean;
   };
+  settings: Settings,
+  profiles: Profile[];
 }

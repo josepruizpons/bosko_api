@@ -23,6 +23,13 @@ export type DbTrack = Prisma.trackGetPayload<{
   }
 }>
 
+export type DbProfileConnection = Prisma.profile_connectionsGetPayload<{}>
+export type DbProfile = Prisma.profilesGetPayload<{
+  include: {
+    profile_connections: true
+  }
+}>
+
 export type DbAsset = Prisma.assetModel
 
 // Option: get type from query
