@@ -1,3 +1,4 @@
+import { get_bs_track_by_id } from "./api/beatstars-api";
 import { getSignedFileUrl } from "./aws";
 import { ASSET_TYPE } from "./constants";
 import { DbAsset, DbTrack } from "./types/db_types";
@@ -12,31 +13,76 @@ export const db_track_to_track = async (db_track: DbTrack): Promise<Track> => {
     name: db_track.name,
     created_at: db_track.created_at,
     publish_at: db_track.publish_at,
-    yt_url: db_track.name,
+    yt_url: db_track.yt_url,
     beatstars_url: db_track.beatstars_url,
     beat: null,
     thumbnail: null,
     beatstars_id_track: db_track.beatstars_id_track,
   }
 
+  if (db_track.beatstars_id_track && (db_track.beat?.beatstars_id || db_track.thumbnail?.beatstars_id)) {
+    const bs_track = await get_bs_track_by_id(
+      db_track.id_user,
+      db_track.beatstars_id_track,
+    )
+
+    if (db_track.beat && bs_track?.bundle) {
+      mapped_track.beat = {
+        id: db_track.beat.id,
+        name: db_track.beat.name,
+        type: db_track.beat.type as AssetType,
+        url: bs_track.bundle.stream?.url ?? bs_track.bundle.mainAudioFile.url,
+        s3_uploaded: true,
+        bs_uploaded: db_track.beat.beatstars_id !== null,
+      }
+
+    }
+
+    if (db_track.thumbnail && bs_track?.artwork) {
+      mapped_track.thumbnail = {
+        id: db_track.thumbnail.id,
+        name: db_track.thumbnail.name,
+        type: db_track.thumbnail.type as AssetType,
+        url: bs_track.artwork.fitInUrl,
+        s3_uploaded: true,
+        bs_uploaded: db_track.thumbnail.beatstars_id !== null,
+      }
+    }
+  }
+  const assets_to_fetch: DbAsset[] = []
+
+  if(mapped_track.beat === null && db_track.beat) assets_to_fetch.push(db_track.beat as DbAsset)
+  if(mapped_track.thumbnail === null && db_track.thumbnail) assets_to_fetch.push(db_track.thumbnail as DbAsset)
+
   await Promise.all(
-    [db_track.beat, db_track.thumbnail].map(
+    assets_to_fetch.map(
       async (asset) => {
         if (asset === null) return null
-        const url = await getSignedFileUrl(asset.s3_key)
-        const asset_with_url: Asset = {
-          id: asset.id,
-          name: asset.name,
-          type: asset.type as AssetType,
-          url,
-          s3_uploaded: true,
-          bs_uploaded: asset.beatstars_id !== null,
+        let url = null
+        if (!asset.beatstars_id) {
+          url = await getSignedFileUrl(asset.s3_key)
+        } else {
+
         }
 
-        if (asset_with_url.type === ASSET_TYPE.BEAT) {
+        let asset_with_url: Asset | null = null
+
+        if (url !== null) {
+
+          asset_with_url = {
+            id: asset.id,
+            name: asset.name,
+            type: asset.type as AssetType,
+            url,
+            s3_uploaded: true,
+            bs_uploaded: asset.beatstars_id !== null,
+          }
+        }
+
+        if (asset.type === ASSET_TYPE.BEAT) {
           mapped_track.beat = asset_with_url
         }
-        if (asset_with_url.type === ASSET_TYPE.THUMBNAIL) {
+        if (asset.type === ASSET_TYPE.THUMBNAIL) {
           mapped_track.thumbnail = asset_with_url
         }
       }

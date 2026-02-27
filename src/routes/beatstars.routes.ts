@@ -1,11 +1,12 @@
 import express from 'express'
-import { asyncHandler, beatstarsSlug, checkGraphQLErrors, extra_data_from_response, get_beatstars_token, get_current_user, sleep } from "../utils";
+import { asyncHandler, beatstarsSlug, checkGraphQLErrors, extra_data_from_response, get_current_user, sleep } from "../utils";
 import { BeatStarsTrack } from "../types/bs_types";
 import { api_error400, api_error403, api_error404, api_error500 } from '../errors';
 import { downloadFileFromS3 } from "../aws";
 
 import { db, track_include } from '../db'
 import { db_asset_to_asset, db_track_to_track } from '../mappers';
+import { get_beatstars_token } from '../api/beatstars-api';
 
 export const bs_router = express.Router()
 
