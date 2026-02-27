@@ -12,32 +12,6 @@ import { PLATFORMS, TRACK_STATUS } from './constants';
 import { DbTrack } from './types/db_types';
 import { Profile, TrackStatus, UserInfo } from './types/types';
 
-export async function get_beatstars_token(user_id: number) {
-  const bs_oauth = await db.oauth.findFirst({
-    where: {
-      connection_type: PLATFORMS.BEATSTARS,
-      id_user: user_id,
-
-    }
-  })
-  if (!bs_oauth) return api_error500()
-
-  const urlencoded = new URLSearchParams();
-  urlencoded.append("refresh_token", bs_oauth.refresh_token);
-  urlencoded.append("client_id", bs_oauth.client_id);
-  urlencoded.append("client_secret", bs_oauth.client_secret);
-  urlencoded.append("grant_type", "refresh_token");
-  const response = await fetch("https://core.prod.beatstars.net/auth/oauth/token", {
-    method: 'POST',
-    body: urlencoded,
-  })
-
-  if (response.status !== 200) api_error500()
-
-  const payload: BeatStarsLoginResponse = await response.json()
-
-  return payload.access_token
-}
 
 export const asyncHandler =
   (fn: RequestHandler): RequestHandler =>

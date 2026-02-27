@@ -5,7 +5,6 @@ export function validate_session(
   res: Response,
   next: NextFunction
 ) {
-  console.log({ session: req.session })
   if (!req.session.userId) {
     return res.status(401).json({ error: 'Unauthorized' });
   }

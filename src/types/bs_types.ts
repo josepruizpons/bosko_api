@@ -47,6 +47,31 @@ export type BeatStarsS3UploadMeta = {
   'X-Amz-Signature': string;
 }
 
+export type BeatStarsArtwork = {
+  assetId: BeatStarsAssetFile['id'],
+  fitInUrl: string;
+}
+
+export type BeatStarsBundle = {
+  progress: 'COMPLETE' | 'PENDING' | 'ERROR';
+  mainAudioFile: {
+    extension: string;
+    assetId: BeatStarsAssetFile['id'],
+    name: string;
+    fullName: string;
+    url: string;
+    type: 'AUDIO';
+    signedUrl: string;
+    size: number;
+  }
+  stream: {
+    duration: number;
+    extension: string;
+    assetId: BeatStarsAssetFile['id'];
+    url: string;
+  }
+}
+
 export type BeatStarsTrack = {
   id: string;
   description: string;
@@ -66,6 +91,8 @@ export type BeatStarsTrack = {
   contentIdByTrackId: string | null;
   collaborations: unknown[];
   thirdPartyLoopsAndSample: unknown[];
+  artwork: BeatStarsArtwork | null;
+  bundle: BeatStarsBundle | null;
   // NOTE: Some fields have not been typed
 }
 
