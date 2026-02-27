@@ -1,26 +1,30 @@
 import { google } from 'googleapis'
 import { db } from './db'
-import { api_error500 } from './errors'
+import { api_error400, api_error500 } from './errors'
 import { PLATFORMS, PROD_HOSTNAME } from './constants'
 
 
 
 
 export const get_google_client = async (
-  user_id: number,
+  id_profile: string,
 ) => {
-  const oauth = await db.oauth.findFirst({
+  const connection = await db.profile_connections.findFirst({
     where: {
-      connection_type: PLATFORMS.YOUTUBE,
-      id_user: user_id,
-    }
+      id_profile,
+      platform: PLATFORMS.YOUTUBE,
+    },
+    include: { oauth: true }
   })
-  if (oauth === null) {
+
+  if (!connection) {
     console.log({
-      message: `${PLATFORMS.YOUTUBE} oauth not found`
+      message: `${PLATFORMS.YOUTUBE} connection not found for profile ${id_profile}`
     })
-    api_error500(`${PLATFORMS.YOUTUBE} oauth not found`)
+    return api_error400(`Profile has no YouTube connection`)
   }
+
+  const oauth = connection.oauth
   const callback_endpoint = process.env.NODE_ENV === "production"
     ? `${PROD_HOSTNAME}/google/auth_callback`
     : `https://localhost:3000/google/auth_callback`
@@ -28,14 +32,14 @@ export const get_google_client = async (
 
 
   const oauth2Client = new google.auth.OAuth2(
-    oauth?.client_id,
-    oauth?.client_secret,
+    oauth.client_id,
+    oauth.client_secret,
     callback_endpoint,
   )
 
   // Establece refresh token
   oauth2Client.setCredentials({
-    refresh_token: oauth?.refresh_token,
+    refresh_token: oauth.refresh_token,
   })
 
   return oauth2Client

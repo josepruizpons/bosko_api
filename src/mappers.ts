@@ -20,9 +20,9 @@ export const db_track_to_track = async (db_track: DbTrack): Promise<Track> => {
     beatstars_id_track: db_track.beatstars_id_track,
   }
 
-  if (db_track.beatstars_id_track && (db_track.beat?.beatstars_id || db_track.thumbnail?.beatstars_id)) {
+  if (db_track.id_profile && db_track.beatstars_id_track && (db_track.beat?.beatstars_id || db_track.thumbnail?.beatstars_id)) {
     const bs_track = await get_bs_track_by_id(
-      db_track.id_user,
+      db_track.id_profile,
       db_track.beatstars_id_track,
     )
 

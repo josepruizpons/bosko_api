@@ -1,18 +1,27 @@
 import express from 'express'
 import { google } from 'googleapis';
 import { api_error400, api_error500 } from '../errors';
-import { buffer_to_stream, generate_video, get_current_user, youtubeUrl } from '../utils';
+import { buffer_to_stream, generate_video, get_current_user, get_profile, youtubeUrl } from '../utils';
 import { get_google_client } from '../google_auth';
 import { db, track_include } from '../db'
 import { deleteFileFromS3, downloadFileFromS3, invokeVideoLambda } from '../aws';
 import { db_track_to_track } from '../mappers';
+import { PLATFORMS } from '../constants';
 
 export const google_router = express.Router();
 
 // Ruta GET /google
 google_router.get('/connect', async (req, res) => {
   const user = await get_current_user(req)
-  const google_client = await get_google_client(user.id)
+  const id_profile = req.query.id_profile as string | undefined
+
+  if (!id_profile) {
+    return api_error400('Missing required query param: id_profile')
+  }
+
+  await get_profile(user.id, id_profile)
+
+  const google_client = await get_google_client(id_profile)
 
   const scopes = [
     // "https://www.googleapis.com/auth/youtube.upload",
@@ -23,7 +32,7 @@ google_router.get('/connect', async (req, res) => {
     access_type: "offline",
     prompt: 'consent',
     scope: scopes,
-    state: user.id.toString(),
+    state: JSON.stringify({ userId: user.id, id_profile }),
   });
 
   res.json({ url })
@@ -34,7 +43,6 @@ google_router.post(
   '/upload-youtube',
   async (req, res) => {
     const user = await get_current_user(req)
-    const google_client = await get_google_client(user.id)
 
     try {
       const id_track: string | null = req.body.id_track ?? null
@@ -47,6 +55,34 @@ google_router.post(
       })
 
       if (track === null) return api_error400('Track not found')
+
+      // Verify track belongs to user
+      if (track.id_user !== user.id) {
+        return api_error400('You do not have permission to upload this track')
+      }
+
+      if (!track.id_profile) {
+        return api_error400('Track has no profile assigned')
+      }
+
+      const google_client = await get_google_client(track.id_profile)
+
+      // Read description from profile's YouTube connection meta (with hardcoded fallback)
+      const yt_connection = await db.profile_connections.findFirst({
+        where: {
+          id_profile: track.id_profile,
+          platform: PLATFORMS.YOUTUBE,
+        }
+      })
+      const yt_meta = (yt_connection?.meta ?? {}) as Record<string, any>
+      const default_description = `get your license: ${track.beatstars_url}
+
+
+
+If you want to make profit with your music (upload your song to streaming services for example), you must purchase a license that is suitable for yourself before releasing your song. Regardless if you've purchased a license or not, you can't register your song on BMI/ASCAP/WIPO/OMPI or any worldwide copyright organization or any other Content ID system unless you have acquired an Exclusive license.`
+      const video_description: string = yt_meta.description
+        ? yt_meta.description.replace('{{beatstars_url}}', track.beatstars_url ?? '')
+        : default_description
 
       // Idempotent: if already uploaded, return existing URL
       if (track.yt_url) {
@@ -124,11 +160,7 @@ google_router.post(
         requestBody: {
           snippet: {
             title: track.name,
-            description: `get your license: ${track.beatstars_url}
-
-
-
-If you want to make profit with your music (upload your song to streaming services for example), you must purchase a license that is suitable for yourself before releasing your song. Regardless if you've purchased a license or not, you can't register your song on BMI/ASCAP/WIPO/OMPI or any worldwide copyright organization or any other Content ID system unless you have acquired an Exclusive license.`
+            description: video_description
           },
           status: {
             privacyStatus: 'private',

@@ -35,7 +35,9 @@ export type YoutubeMeta = {
 }
 
 export type BeatstarsMeta = {
-  tags: string[];
+  tags?: string[];
+  genres?: string[];
+  bpm?: string;
 }
 
 export type ProfileConnection = {
@@ -62,10 +64,6 @@ export type UserInfo = {
   is_active: boolean;
   created_at: Date;
   last_publish_at: Date | null;
-  connections: {
-    youtube: boolean;
-    beatstars: boolean;
-  };
   settings: Settings,
   profiles: Profile[];
 }

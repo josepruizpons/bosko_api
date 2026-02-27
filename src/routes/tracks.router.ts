@@ -1,5 +1,5 @@
 import express from 'express'
-import { asyncHandler, generate_id, get_current_user } from "../utils";
+import { asyncHandler, generate_id, get_current_user, get_profile } from "../utils";
 import { api_error400, api_error403, api_error404 } from '../errors';
 import { db, track_include } from '../db'
 import { DbTrack } from '../types/db_types';
@@ -8,15 +8,23 @@ import { deleteFileFromS3 } from '../aws';
 
 export const tracks_router = express.Router()
 
-// GET /api/tracks - List pending tracks for current user
+// GET /api/tracks/pending - List pending tracks for a profile
 tracks_router.get('/pending',
   asyncHandler(
     async (req, res) => {
       const user = await get_current_user(req)
+      const id_profile = req.query.id_profile as string | undefined
+
+      if (!id_profile) {
+        return api_error400('Missing required query param: id_profile')
+      }
+
+      await get_profile(user.id, id_profile)
+
       const db_tracks: DbTrack[] = await db.track.findMany({
         where: {
           yt_url: null,
-          id_user: user.id,
+          id_profile,
         },
         include: track_include,
         orderBy: [
@@ -39,6 +47,13 @@ tracks_router.post('/',
   asyncHandler(
     async (req, res) => {
       const user = await get_current_user(req)
+
+      const id_profile: string | undefined = req.body.id_profile
+      if (!id_profile) {
+        return api_error400('Missing required field: id_profile')
+      }
+
+      await get_profile(user.id, id_profile)
 
       const name: string | null = req.body.name ?? null
       const id_beat: string | null = req.body.id_beat ?? null
@@ -95,6 +110,7 @@ tracks_router.post('/',
         data: {
           id: track_id,
           id_user: user.id,
+          id_profile,
           name,
           id_beat,
           id_thumbnail,

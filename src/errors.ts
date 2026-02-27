@@ -9,18 +9,18 @@ export class ApiError extends Error {
   }
 }
 
-export function api_error500(message: string = '') {
+export function api_error500(message: string = ''): never {
   throw new ApiError(500, 'Internal Server Error', message)
 }
 
-export function api_error400(message: string = '') {
+export function api_error400(message: string = ''): never {
   throw new ApiError(400, 'Bad Request', message)
 }
 
-export function api_error404(message: string = '') {
+export function api_error404(message: string = ''): never {
   throw new ApiError(404, 'Not Found', message)
 }
-export function api_error403(message: string = '') {
+export function api_error403(message: string = ''): never {
   throw new ApiError(403, 'Forbidden', message)
 }
 

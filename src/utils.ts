@@ -4,12 +4,12 @@ import path from 'path'
 import crypto from 'crypto'
 
 import { ErrorRequestHandler, NextFunction, Request, RequestHandler, Response as ExpressResponse } from "express";
-import { api_error403, api_error500, ApiError } from "./errors";
+import { api_error403, api_error404, api_error500, ApiError } from "./errors";
 import { BeatStarsLoginResponse, GraphQLResponse } from "./types/bs_types";
 import { db } from './db';
 import { Prisma } from './generated/prisma/client';
 import { PLATFORMS, TRACK_STATUS } from './constants';
-import { DbTrack } from './types/db_types';
+import { DbProfile, DbTrack } from './types/db_types';
 import { Profile, TrackStatus, UserInfo } from './types/types';
 
 
@@ -168,7 +168,15 @@ export async function get_current_user(req: Request) {
 
 }
 
-export async function get_profile(id_user: Profile['id_user'], id_profile: Profile['id'])
+export async function get_profile(id_user: Profile['id_user'], id_profile: Profile['id']): Promise<DbProfile> {
+  const profile = await db.profiles.findUnique({
+    where: { id: id_profile },
+    include: { profile_connections: true }
+  })
+  if (!profile) return api_error404('Profile not found')
+  if (profile.id_user !== id_user) return api_error403('Profile does not belong to user')
+  return profile as DbProfile
+}
 
 
 const characterSet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_';

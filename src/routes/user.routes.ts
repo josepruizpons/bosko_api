@@ -1,7 +1,6 @@
 import express from 'express'
 import { get_current_user, asyncHandler } from "../utils";
 import { db } from '../db'
-import { PLATFORMS } from '../constants';
 import type { UserInfo, Settings } from '../types/types';
 import { db_profile_to_profile } from '../mappers';
 
@@ -18,19 +17,6 @@ user_router.get('/info',
       select: { publish_at: true }
     })
 
-    // Get OAuth connections
-    const oauthConnections = await db.oauth.findMany({
-      where: { id_user: user.id },
-      select: { connection_type: true }
-    })
-
-    const hasYoutube = oauthConnections.some(
-      c => c.connection_type === PLATFORMS.YOUTUBE
-    )
-    const hasBeatstars = oauthConnections.some(
-      c => c.connection_type === PLATFORMS.BEATSTARS
-    )
-
     const db_profiles = await db.profiles.findMany({
       where: { id_user: user.id },
       include: {
@@ -44,10 +30,6 @@ user_router.get('/info',
       is_active: user.is_active ?? false,
       created_at: user.created_at ?? new Date(),
       last_publish_at: lastTrack?.publish_at ?? null,
-      connections: {
-        youtube: hasYoutube,
-        beatstars: hasBeatstars
-      },
       settings: user.settings as Settings,
       profiles: db_profiles.map(p => db_profile_to_profile(p)),
     }

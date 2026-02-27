@@ -1,19 +1,22 @@
-import { CONNECTION_TYPES } from "../constants";
+import { PLATFORMS } from "../constants";
 import { db } from "../db";
-import { api_error500 } from "../errors";
+import { api_error400, api_error500 } from "../errors";
 import { BeatStarsLoginResponse, BeatStarsTrack } from "../types/bs_types";
 import { UserInfo } from "../types/types"
 import { checkGraphQLErrors } from "../utils"
 
-export async function get_beatstars_token(user_id: number) {
-  const bs_oauth = await db.oauth.findFirst({
+export async function get_beatstars_token(id_profile: string) {
+  const connection = await db.profile_connections.findFirst({
     where: {
-      connection_type: CONNECTION_TYPES.BEATSTARS,
-      id_user: user_id,
-
-    }
+      id_profile,
+      platform: PLATFORMS.BEATSTARS,
+    },
+    include: { oauth: true }
   })
-  if (!bs_oauth) return api_error500()
+
+  if (!connection) return api_error400('Profile has no BeatStars connection')
+
+  const bs_oauth = connection.oauth
 
   const urlencoded = new URLSearchParams();
   urlencoded.append("refresh_token", bs_oauth.refresh_token);
@@ -33,10 +36,10 @@ export async function get_beatstars_token(user_id: number) {
 }
 
 export const get_bs_track_by_id = async (
-  user_id: UserInfo['id'],
+  id_profile: string,
   bs_id_track: string,
 ) => {
-  const token = await get_beatstars_token(user_id)
+  const token = await get_beatstars_token(id_profile)
 
   const headers = {
     Authorization: `Bearer ${token}`,

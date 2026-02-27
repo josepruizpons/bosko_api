@@ -1,6 +1,6 @@
 import express from 'express'
 import multer from 'multer';
-import { asyncHandler, generate_id, get_current_user } from "../utils";
+import { asyncHandler, generate_id, get_current_user, get_profile } from "../utils";
 import { api_error400, api_error404 } from '../errors';
 import { uploadFileToS3, streamFileFromS3 } from "../aws";
 import { db } from '../db'
@@ -44,6 +44,13 @@ assets_router.post('/',
   upload.single('file'),
   asyncHandler(async (req, res) => {
     const user = await get_current_user(req)
+
+    const id_profile: string | undefined = req.body.id_profile
+    if (!id_profile) {
+      return api_error400('Missing required field: id_profile')
+    }
+
+    await get_profile(user.id, id_profile)
 
     const file = req.file;
     const type: string = req.body.type;
@@ -91,6 +98,7 @@ assets_router.post('/',
         s3_key: s3_key,
         mimetype: mimetype,
         id_user: user.id,
+        id_profile,
         beatstars_id: null,
       }
     });

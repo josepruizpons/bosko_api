@@ -7,6 +7,7 @@ import { downloadFileFromS3 } from "../aws";
 import { db, track_include } from '../db'
 import { db_asset_to_asset, db_track_to_track } from '../mappers';
 import { get_beatstars_token } from '../api/beatstars-api';
+import { PLATFORMS } from '../constants';
 
 export const bs_router = express.Router()
 
@@ -25,7 +26,16 @@ bs_router.post(
     })
     if (db_asset === null) return api_error404('Asset not found')
 
-    const token = await get_beatstars_token(user.id);
+    // Verify asset belongs to user
+    if (db_asset.id_user !== user.id) {
+      return api_error403('You do not have permission to upload this asset')
+    }
+
+    if (!db_asset.id_profile) {
+      return api_error400('Asset has no profile assigned')
+    }
+
+    const token = await get_beatstars_token(db_asset.id_profile);
 
     const beatstars_slug = beatstarsSlug(db_asset.name)
 
@@ -71,8 +81,7 @@ bs_router.post(
     console.log((JSON.stringify(assetBody, null, 2)))
     const assetErrors = checkGraphQLErrors(assetBody);
     if (assetErrors.hasErrors) {
-      api_error500(assetErrors.messages.join(' | '));
-      return;
+      return api_error500(assetErrors.messages.join(' | '));
     }
 
     const bs_asset = assetBody.data.create;
@@ -101,8 +110,7 @@ bs_router.post(
 
     if (s3ParamsRes.status !== 200) {
       console.log(await s3ParamsRes.text())
-      api_error500('Unable to get S3 params');
-      return;
+      return api_error500('Unable to get S3 params');
     }
 
     const { url, fields } = await s3ParamsRes.json();
@@ -123,8 +131,7 @@ bs_router.post(
     const text = await beatstarsUploadRes.text();
     console.log({ text: JSON.stringify(text, null, 2) })
     if (beatstarsUploadRes.status !== 201) {
-      api_error500(`BeatStars S3 upload failed: ${text}`);
-      return;
+      return api_error500(`BeatStars S3 upload failed: ${text}`);
     }
 
     // Save beatstars_id to database
@@ -208,8 +215,24 @@ bs_router.post('/publish',
         return api_error404('Thumbnnail not found')
       }
 
+      if (!track.id_profile) {
+        return api_error400('Track has no profile assigned')
+      }
 
-      const token = await get_beatstars_token(user.id)
+      const token = await get_beatstars_token(track.id_profile)
+
+      // Read meta from profile's BeatStars connection (with hardcoded fallback)
+      const bs_connection = await db.profile_connections.findFirst({
+        where: {
+          id_profile: track.id_profile,
+          platform: PLATFORMS.BEATSTARS,
+        }
+      })
+      const bs_meta = (bs_connection?.meta ?? {}) as Record<string, any>
+      const meta_tags: string[] = bs_meta.tags ?? ["dancehall", "afrobeat", "tyla"]
+      const meta_genres: string[] = bs_meta.genres ?? ["AFRO", "AFROBEAT", "AFROPOP"]
+      const meta_bpm: string = bs_meta.bpm ?? "220"
+
       const headers = {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json"
@@ -290,17 +313,9 @@ bs_router.post('/publish',
             "description": "",
             "excludeFromBulkDiscounts": false,
             "metadata": {
-              "tags": [
-                "dancehall",
-                "afrobeat",
-                "tyla"
-              ],
-              "genres": [
-                "AFRO",
-                "AFROBEAT",
-                "AFROPOP"
-              ],
-              "bpmDouble": "220",
+              "tags": meta_tags,
+              "genres": meta_genres,
+              "bpmDouble": meta_bpm,
               "instruments": [],
               "keyNote": "NONE",
               "moods": []
@@ -361,8 +376,8 @@ bs_router.post('/publish',
         console.log(JSON.stringify(check_track_body, null, 2))
 
         if (check_track_graphql_errors.hasErrors) {
-          api_error500(check_track_graphql_errors.messages.join(' - '))
-          return
+          return api_error500(check_track_graphql_errors.messages.join(' - '))
+
         }
 
         const bundle = check_track_body.data.member.inventory.track.bundle
@@ -393,8 +408,8 @@ bs_router.post('/publish',
         || !publish_track_body.data?.publishTrack?.shareUrl
       ) {
         console.log({ publish_errors: JSON.stringify(publish_track_body, null, 2) })
-        api_error500(graphql_errors.messages.join(', '))
-        return
+        return api_error500(graphql_errors.messages.join(', '))
+
       }
 
       const db_track = await db.track.update({

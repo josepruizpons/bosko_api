@@ -12,6 +12,7 @@ import { errorHandler, get_current_user } from "../utils";
 import { db } from "../db"
 import { auth_router } from "./auth.routes";
 import { user_router } from "./user.routes";
+import { profiles_router } from "./profiles.router";
 import { validate_session } from "../middlewares/session.middleware";
 import { get_google_client } from "../google_auth";
 import { api_error400 } from "../errors";
@@ -66,10 +67,22 @@ app.use(
 
 // Ruta GET /google/auth
 app.get('/google/auth_callback', async (req, res) => {
-  req.session.userId = parseInt(req.query.state as string)
-  if(!req.session.userId) return api_error400('No user_id')
+  // State is now JSON: { userId, id_profile }
+  let userId: number
+  let id_profile: string
+  try {
+    const state = JSON.parse(req.query.state as string)
+    userId = state.userId
+    id_profile = state.id_profile
+  } catch {
+    return api_error400('Invalid state')
+  }
+
+  if (!userId || !id_profile) return api_error400('Invalid state: missing userId or id_profile')
+
+  req.session.userId = userId
   const user = await get_current_user(req)
-  const google_client = await get_google_client(user.id)
+  const google_client = await get_google_client(id_profile)
   const code = req.query.code;
 
   if (code === undefined || typeof code !== 'string') {
@@ -79,17 +92,24 @@ app.get('/google/auth_callback', async (req, res) => {
 
   //WARN: check if session applies to this endpoint
   const { tokens } = await google_client.getToken(code);
-  const updatedOAuth = await db.oauth.updateMany({
-    where: {
-      id_user: user.id,
-      connection_type: PLATFORMS.YOUTUBE,
-    },
-    data: {
-      refresh_token: tokens.refresh_token ?? '',
-    },
-  });
 
-  console.log(updatedOAuth);
+  // Update refresh token via profile_connections → oauth
+  const connection = await db.profile_connections.findFirst({
+    where: {
+      id_profile,
+      platform: PLATFORMS.YOUTUBE,
+    }
+  })
+
+  if (connection) {
+    await db.oauth.update({
+      where: { id: connection.id_oauth },
+      data: {
+        refresh_token: tokens.refresh_token ?? '',
+      },
+    });
+  }
+
   console.log({ tokens })
   google_client.setCredentials(tokens);
   // Guarda refresh_token en BD
@@ -136,6 +156,7 @@ api_router.use('/google', google_router)
 api_router.use('/tracks', tracks_router)
 api_router.use('/assets', assets_router)
 api_router.use('/user', user_router)
+api_router.use('/profiles', profiles_router)
 
 app.use('/api', api_router)
 app.use(errorHandler);
