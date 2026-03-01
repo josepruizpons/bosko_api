@@ -8,6 +8,37 @@ import { deleteFileFromS3 } from '../aws';
 
 export const tracks_router = express.Router()
 
+// GET /api/tracks/last-scheduled - Last scheduled track per profile for the current user
+tracks_router.get('/last-scheduled',
+  asyncHandler(
+    async (req, res) => {
+      const user = await get_current_user(req)
+
+      const profiles = await db.profiles.findMany({
+        where: { id_user: user.id },
+        select: { id: true, name: true },
+      })
+
+      const results = await Promise.all(
+        profiles.map(async (profile) => {
+          const track = await db.track.findFirst({
+            where: { id_profile: profile.id, yt_url: null },
+            orderBy: { publish_at: 'desc' },
+            select: { publish_at: true },
+          })
+          return {
+            id_profile: profile.id,
+            profile_name: profile.name,
+            last_scheduled: track?.publish_at ?? null,
+          }
+        })
+      )
+
+      res.json(results)
+    }
+  )
+)
+
 // GET /api/tracks/pending - List pending tracks for a profile
 tracks_router.get('/pending',
   asyncHandler(
