@@ -388,6 +388,8 @@ bs_router.post('/publish',
         has_bundle = bundle !== null && bundle.progress === 'COMPLETE'
       }
 
+      console.log(JSON.stringify(raw, null, 2))
+
       const publish_track_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=PublishTrackForm", {
         method: "POST",
         headers,

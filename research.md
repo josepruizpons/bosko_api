@@ -35,7 +35,8 @@ src/
 │   ├── app.ts                # Setup Express, CORS, sesión, mounting
 │   ├── auth.routes.ts        # POST /auth/login, GET /auth/logout
 │   ├── user.routes.ts        # GET /api/user/info
-│   ├── tracks.router.ts      # CRUD tracks
+│   ├── profiles.router.ts    # CRUD perfiles + edición meta de conexiones
+│   ├── tracks.router.ts      # CRUD tracks + GET last-scheduled
 │   ├── assets.router.ts      # Upload + stream assets
 │   ├── beatstars.routes.ts   # BeatStars upload + publish
 │   └── google.routes.ts      # YouTube connect + upload
@@ -137,8 +138,8 @@ model profile_connections {
 ```
 
 **Campo `meta` según plataforma:**
-- `YOUTUBE`: `{ description: string }` → descripción por defecto de los videos
-- `BEATSTARS`: `{ tags: string[] }` → tags por defecto para los tracks
+- `YOUTUBE`: `{ description: string }` — descripción por defecto de los videos. Soporta la keyword `{bs_url}` que se sustituye en runtime por la URL del track en BeatStars.
+- `BEATSTARS`: `{ tags?: string[], genres?: string[], bpm?: string }` — metadatos por defecto para los tracks publicados. El backend usa fallbacks hardcodeados si algún campo falta.
 
 #### `asset`
 
@@ -274,10 +275,10 @@ Une un perfil concreto con las credenciales OAuth correspondientes y añade meta
 profiles (1) ──── (many) profile_connections
                   ├── connection YOUTUBE
                   │     id_oauth → oauth YOUTUBE
-                  │     meta: { description: "..." }
+                  │     meta: { description: "Buy license: {bs_url}" }
                   └── connection BEATSTARS
                         id_oauth → oauth BEATSTARS
-                        meta: { tags: ["afrobeat", ...] }
+                        meta: { tags: ["afrobeat"], genres: ["AFRO"], bpm: "140" }
 ```
 
 ### Relación entre los dos niveles
@@ -289,22 +290,21 @@ User
  └── Profile "My Channel"
       └── profile_connection (YOUTUBE)
            ├── id_oauth → oauth(YOUTUBE)
-           └── meta: { description: "Get your license: ..." }
+           └── meta: { description: "Get your license: {bs_url}" }
       └── profile_connection (BEATSTARS)
            ├── id_oauth → oauth(BEATSTARS)
-           └── meta: { tags: ["dancehall", "afrobeat"] }
+           └── meta: { tags: ["dancehall"], genres: ["AFRO"], bpm: "140" }
 ```
 
 ### Estado actual de implementación
 
-**Las rutas de publicación (`/api/bs/*`, `/api/google/*`) NO usan `profile_connections` todavía.** Consultan directamente la tabla `oauth` por `id_user + connection_type`. El esquema de `profile_connections` está completamente modelado y se expone en `GET /api/user/info`, pero aún no se usa para parametrizar el publishing per-perfil.
+**Las rutas de publicación (`/api/bs/*`, `/api/google/*`) NO usan `profile_connections` todavía.** Consultan directamente la tabla `oauth` por `id_user + connection_type`, y los metadatos (tags, géneros, BPM, descripción) usan los valores de `profile_connections.meta` con fallbacks hardcodeados si están vacíos:
+- Tags BeatStars fallback: `["dancehall", "afrobeat", "tyla"]`
+- Géneros fallback: `["AFRO", "AFROBEAT", "AFROPOP"]`
+- BPM fallback: `"220"`
+- Keyword `{bs_url}` en description de YouTube: se sustituye por la URL real del track en BeatStars
 
-Esto significa que los tags de BeatStars y la descripción de YouTube están actualmente **hardcodeados** en el código:
-- Tags BeatStars: `["dancehall", "afrobeat", "tyla"]` (hardcoded en `beatstars.routes.ts`)
-- Géneros: `["AFRO", "AFROBEAT", "AFROPOP"]` (hardcoded)
-- BPM: `"220"` (hardcoded)
-
-El diseño intencional es que estos vengan de `profile_connections.meta`.
+El esquema de `profile_connections` está completamente modelado, los metadatos ya son editables desde el frontend via `PATCH /api/profiles/:id/connections/:platform`, y el endpoint de publicación de YouTube ya sustituye `{bs_url}`.
 
 ### Tipo `ProfileConnection`
 
@@ -315,7 +315,7 @@ type ProfileConnection = {
   created_at: Date;
 } & (
   | { platform: 'YOUTUBE';    meta: { description: string } }
-  | { platform: 'BEATSTARS';  meta: { tags: string[] } }
+  | { platform: 'BEATSTARS';  meta: { tags?: string[], genres?: string[], bpm?: string } }
 )
 ```
 
@@ -340,7 +340,13 @@ Unión discriminada por `platform`.
 |--------|------|-------------|
 | `GET` | `/api/check` | Verifica que la sesión está activa (204/401) |
 | `GET` | `/api/user/info` | Info completa del usuario + perfiles + conexiones |
+| `GET` | `/api/profiles` | Lista perfiles del usuario con sus conexiones |
+| `POST` | `/api/profiles` | Crear perfil |
+| `PATCH` | `/api/profiles/:id` | Actualizar nombre/settings de un perfil |
+| `DELETE` | `/api/profiles/:id` | Eliminar perfil |
+| `PATCH` | `/api/profiles/:id/connections/:platform` | Actualizar `meta` de una conexión (`{ meta }` en body) |
 | `GET` | `/api/tracks/pending` | Tracks sin `yt_url`, ordenados por `publish_at` |
+| `GET` | `/api/tracks/last-scheduled` | Array `{ id_profile, profile_name, last_scheduled }` por perfil |
 | `POST` | `/api/tracks` | Crear track |
 | `PATCH` | `/api/tracks/:id` | Actualizar track |
 | `DELETE` | `/api/tracks/:id` | Borrar track (+ ficheros S3) |
@@ -401,12 +407,15 @@ API GraphQL (`https://core.prod.beatstars.net/studio/graphql`). Flujo de autenti
 5. `publishTrack` → obtiene `shareUrl`
 6. Actualiza BD con `beatstars_id_track` y `beatstars_url`
 
+Los metadatos del track (tags, géneros, BPM) se leen de `profile_connections.meta` para el perfil del track, con fallbacks hardcodeados si están vacíos.
+
 ### Google / YouTube
 
 - OAuth2 con scope `youtube` completo
 - Flujo: popup → `/api/google/connect` → URL auth → callback → guarda `refresh_token`
 - El video se genera localmente con `ffmpeg` (dev) o via Lambda (prod)
 - Parámetros del video: 1920×1080, letterbox, `libx264`, `aac` 192k, scheduled (`publishAt`)
+- La descripción del video se lee de `profile_connections.meta.description` y se sustituye `{bs_url}` por la URL real del track en BeatStars
 
 ---
 
@@ -426,13 +435,12 @@ Los IDs de `users` son enteros auto-increment. Los de `oauth` también.
 
 ## Gaps y TODOs conocidos
 
-1. **`profile_connections` no conectado al publishing** — tags BeatStars, géneros y BPM están hardcodeados en `beatstars.routes.ts`; deberían venir de `profile_connections.meta`
-2. **No hay endpoints de gestión de perfiles** — no hay `POST/PATCH/DELETE /api/profiles`
+1. **`profile_connections.meta` parcialmente conectado al publishing** — YouTube ya usa `description` con `{bs_url}`; BeatStars usa `tags`/`genres`/`bpm` de meta con fallbacks hardcodeados. El próximo paso es eliminar los fallbacks hardcodeados.
+2. **No hay endpoint para crear/conectar `oauth`** — las credenciales de BeatStars/YouTube se insertan manualmente en BD; `todo.md` menciona automatizarlo con Playwright
 3. **No hay endpoint de listado de assets** — solo `POST` (crear) y `GET /:id` (stream)
 4. **Session store in-memory** — las sesiones se pierden al reiniciar; no escala a múltiples procesos
-5. **No hay endpoint para crear/conectar `oauth`** — las credenciales de BeatStars/YouTube se insertan manualmente en BD; `todo.md` menciona automatizarlo con Playwright
-6. **Dos sistemas de status de track** en `utils.ts` y `track_status.ts` — deberían unificarse
-7. **`get_profile()` en `utils.ts`** — declarada pero sin implementación
-8. **`TRACK_STATUS.LOADING`** — definida pero nunca retornada por ninguna función de status
-9. **`error_message` en `track`** — campo en schema pero no se escribe en ningún lugar del código actual
-10. **BeatStars OAuth** — no hay callback OAuth estándar para BeatStars; se usa directamente `refresh_token` pre-insertado
+5. **Dos sistemas de status de track** en `utils.ts` y `track_status.ts` — deberían unificarse
+6. **`get_profile()` en `utils.ts`** — declarada pero sin implementación
+7. **`TRACK_STATUS.LOADING`** — definida pero nunca retornada por ninguna función de status
+8. **`error_message` en `track`** — campo en schema pero no se escribe en ningún lugar del código actual
+9. **BeatStars OAuth** — no hay callback OAuth estándar para BeatStars; se usa directamente `refresh_token` pre-insertado

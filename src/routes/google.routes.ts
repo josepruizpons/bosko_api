@@ -81,7 +81,7 @@ google_router.post(
 
 If you want to make profit with your music (upload your song to streaming services for example), you must purchase a license that is suitable for yourself before releasing your song. Regardless if you've purchased a license or not, you can't register your song on BMI/ASCAP/WIPO/OMPI or any worldwide copyright organization or any other Content ID system unless you have acquired an Exclusive license.`
       const video_description: string = yt_meta.description
-        ? yt_meta.description.replace('{{beatstars_url}}', track.beatstars_url ?? '')
+        ? yt_meta.description.replace('{bs_url}', track.beatstars_url ?? '')
         : default_description
 
       // Idempotent: if already uploaded, return existing URL

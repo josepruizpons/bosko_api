@@ -1,0 +1,1244 @@
+{
+	"genres": [
+		{
+			"key": "TWO_STEP",
+			"value": "2 Step",
+			"__typename": "Pair"
+		},
+		{
+			"key": "POP_80s",
+			"value": "80s Pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ACOUSTIC",
+			"value": "Acoustic",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ADULT_CONTEMPORARY",
+			"value": "Adult Contemporary",
+			"__typename": "Pair"
+		},
+		{
+			"key": "AFRO",
+			"value": "Afro",
+			"__typename": "Pair"
+		},
+		{
+			"key": "AFROBEAT",
+			"value": "Afrobeat",
+			"__typename": "Pair"
+		},
+		{
+			"key": "AFROPOP",
+			"value": "Afropop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "AKISHIBU_KEI",
+			"value": "Akishibu-kei",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ALTERNATIVE",
+			"value": "Alternative",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ALTERNATIVE_HIP_HOP",
+			"value": "Alternative Hip Hop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ALTERNATIVE_RNB",
+			"value": "Alternative R&B",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ALTERNATIVE_ROCK",
+			"value": "Alternative Rock",
+			"__typename": "Pair"
+		},
+		{
+			"key": "AMAPIANO",
+			"value": "Amapiano",
+			"__typename": "Pair"
+		},
+		{
+			"key": "AMBIENT",
+			"value": "Ambient",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ARABIC_POP",
+			"value": "Arabic pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ART_POP",
+			"value": "Art pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "AUSTROPOP",
+			"value": "Austropop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "AVANT_GARDE_HIP_HOP",
+			"value": "Avant-garde hip hop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "AVANT_GARDE_POP",
+			"value": "Avant-garde pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "AVANT_POP",
+			"value": "Avant-pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "BABY_VOICE_MUMBLE_RAP",
+			"value": "Baby Voice Mumble rap",
+			"__typename": "Pair"
+		},
+		{
+			"key": "BAILE",
+			"value": "Baile/Brazilian Funk",
+			"__typename": "Pair"
+		},
+		{
+			"key": "BALKAN_BALLAD",
+			"value": "Balkan ballad",
+			"__typename": "Pair"
+		},
+		{
+			"key": "BEAT",
+			"value": "Beat",
+			"__typename": "Pair"
+		},
+		{
+			"key": "BEBOP",
+			"value": "Bebop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "BLUEGRASS",
+			"value": "Bluegrass",
+			"__typename": "Pair"
+		},
+		{
+			"key": "BLUE_GRASS",
+			"value": "Bluegrass",
+			"__typename": "Pair"
+		},
+		{
+			"key": "BLUES",
+			"value": "Blues",
+			"__typename": "Pair"
+		},
+		{
+			"key": "BLUES_ROCK",
+			"value": "Blues Rock",
+			"__typename": "Pair"
+		},
+		{
+			"key": "BOOM_BAP",
+			"value": "Boom bap",
+			"__typename": "Pair"
+		},
+		{
+			"key": "BREAK",
+			"value": "Break",
+			"__typename": "Pair"
+		},
+		{
+			"key": "BREAKBEAT",
+			"value": "Breakbeat",
+			"__typename": "Pair"
+		},
+		{
+			"key": "BUBBLEGUM",
+			"value": "Bubblegum",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CALIFORNIA_SOUND",
+			"value": "California sound",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CANTOPOP",
+			"value": "Cantopop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CHALGA",
+			"value": "Chalga",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CHILL",
+			"value": "Chill",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CHILLWAVE",
+			"value": "Chillwave",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CHOPPED_AND_SCREWED",
+			"value": "Chopped and screwed",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CHOPPER",
+			"value": "Chopper",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CHRISTIAN",
+			"value": "Christian",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CHRISTIAN_HIP_HOP",
+			"value": "Christian hip hop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CHRISTIAN_POP",
+			"value": "Christian pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CLASSIC_BLUES",
+			"value": "Classic Blues",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CLASSIC_COUNTRY",
+			"value": "Classic Country",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CLASSIC_METAL",
+			"value": "Classic Metal",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CLASSIC_ROCK",
+			"value": "Classic Rock",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CLASS_SOUL",
+			"value": "Classic Soul",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CLASSICAL",
+			"value": "Classical",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CLASSICAL_INSTRUMENTS",
+			"value": "Classical Instruments",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CLASSICAL_VOCALS",
+			"value": "Classical Vocals",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CLOUD_RAP",
+			"value": "Cloud rap",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CLUB",
+			"value": "Club",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CONSCIOUS_HIP_HOP",
+			"value": "Conscious hip hop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CONTEMPORARY_POP",
+			"value": "Contemporary Pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CONTEMPORARY_RB",
+			"value": "Contemporary R&B",
+			"__typename": "Pair"
+		},
+		{
+			"key": "COUNTRY",
+			"value": "Country",
+			"__typename": "Pair"
+		},
+		{
+			"key": "COUNTRY_POP_N_ROCK",
+			"value": "Country Pop & Rock",
+			"__typename": "Pair"
+		},
+		{
+			"key": "COUNTRY_ROCK",
+			"value": "Country Rock",
+			"__typename": "Pair"
+		},
+		{
+			"key": "COUNTRY_POP",
+			"value": "Country pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "COUNTRY_RAP",
+			"value": "Country rap",
+			"__typename": "Pair"
+		},
+		{
+			"key": "COWBOY_POP",
+			"value": "Cowboy pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "COWPUNK",
+			"value": "Cowpunk",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CRINGE_POP",
+			"value": "Cringe pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CRUNK",
+			"value": "Crunk",
+			"__typename": "Pair"
+		},
+		{
+			"key": "CRUNKCORE",
+			"value": "Crunkcore",
+			"__typename": "Pair"
+		},
+		{
+			"key": "DANCE",
+			"value": "Dance",
+			"__typename": "Pair"
+		},
+		{
+			"key": "DANCE_RNB",
+			"value": "Dance R&B",
+			"__typename": "Pair"
+		},
+		{
+			"key": "DANCE_POP",
+			"value": "Dance-pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "DANCEHALL",
+			"value": "Dancehall",
+			"__typename": "Pair"
+		},
+		{
+			"key": "DEATH_METAL",
+			"value": "Death Metal",
+			"__typename": "Pair"
+		},
+		{
+			"key": "DEMBOW",
+			"value": "Dembow",
+			"__typename": "Pair"
+		},
+		{
+			"key": "DIRTY_SOUTH",
+			"value": "Dirty South",
+			"__typename": "Pair"
+		},
+		{
+			"key": "DISCO",
+			"value": "Disco",
+			"__typename": "Pair"
+		},
+		{
+			"key": "DOO_WOP",
+			"value": "Doo-wop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "DOWNTEMPO",
+			"value": "Downtempo",
+			"__typename": "Pair"
+		},
+		{
+			"key": "DRILL",
+			"value": "Drill",
+			"__typename": "Pair"
+		},
+		{
+			"key": "DRUM_N_BASS",
+			"value": "Drum & Bass",
+			"__typename": "Pair"
+		},
+		{
+			"key": "DUB",
+			"value": "Dub",
+			"__typename": "Pair"
+		},
+		{
+			"key": "DUBSTEP",
+			"value": "Dubstep",
+			"__typename": "Pair"
+		},
+		{
+			"key": "EDM",
+			"value": "EDM",
+			"__typename": "Pair"
+		},
+		{
+			"key": "EARLY_SOUL",
+			"value": "Early Soul",
+			"__typename": "Pair"
+		},
+		{
+			"key": "EAST_COAST",
+			"value": "East Coast",
+			"__typename": "Pair"
+		},
+		{
+			"key": "EASY_LISTENING",
+			"value": "Easy Listening",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ELECTRO_POP",
+			"value": "Electro Pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ELECTRO_HOP",
+			"value": "Electro hop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ELECTRONIC",
+			"value": "Electronic",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ELECTROPOP",
+			"value": "Electropop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "EMO_HIP_HOP",
+			"value": "Emo hip hop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ESTRADA",
+			"value": "Estrada",
+			"__typename": "Pair"
+		},
+		{
+			"key": "EURODANCE",
+			"value": "Eurodance",
+			"__typename": "Pair"
+		},
+		{
+			"key": "EUROPOP",
+			"value": "Europop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "EXPERIMENTAL_HIP_HOP",
+			"value": "Experimental hip hop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "EXPERIMENTAL_POP",
+			"value": "Experimental pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "FOLK",
+			"value": "Folk",
+			"__typename": "Pair"
+		},
+		{
+			"key": "FOLK_POP",
+			"value": "Folk-pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "FREESTYLE_RAP",
+			"value": "Freestyle rap",
+			"__typename": "Pair"
+		},
+		{
+			"key": "FUNK",
+			"value": "Funk",
+			"__typename": "Pair"
+		},
+		{
+			"key": "FUTURE_BASS_HOP",
+			"value": "Future bass hop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "G_FUNK",
+			"value": "G-funk",
+			"__typename": "Pair"
+		},
+		{
+			"key": "GANGSTA",
+			"value": "Gangsta",
+			"__typename": "Pair"
+		},
+		{
+			"key": "GANGSTA_RAP",
+			"value": "Gangsta rap",
+			"__typename": "Pair"
+		},
+		{
+			"key": "GHETTO_HOUSE",
+			"value": "Ghetto house",
+			"__typename": "Pair"
+		},
+		{
+			"key": "GHETTOTECH",
+			"value": "Ghettotech",
+			"__typename": "Pair"
+		},
+		{
+			"key": "GLITCHCORE",
+			"value": "Glitchcore",
+			"__typename": "Pair"
+		},
+		{
+			"key": "GLOBAL_K_POP",
+			"value": "Global K-pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "GOSPEL",
+			"value": "Gospel",
+			"__typename": "Pair"
+		},
+		{
+			"key": "GRIME",
+			"value": "Grime",
+			"__typename": "Pair"
+		},
+		{
+			"key": "GROUP_SOUNDS",
+			"value": "Group sounds",
+			"__typename": "Pair"
+		},
+		{
+			"key": "HARD_ROCK",
+			"value": "Hard Rock",
+			"__typename": "Pair"
+		},
+		{
+			"key": "HARDCORE",
+			"value": "Hardcore",
+			"__typename": "Pair"
+		},
+		{
+			"key": "HARDCORE_HIP_HOP",
+			"value": "Hardcore hip hop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "HEAVY_METAL",
+			"value": "Heavy Metal",
+			"__typename": "Pair"
+		},
+		{
+			"key": "HIP_HOP",
+			"value": "Hip Hop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "HIP_HOP_SOUL",
+			"value": "Hip hop soul",
+			"__typename": "Pair"
+		},
+		{
+			"key": "HIP_HOUSE",
+			"value": "Hip house",
+			"__typename": "Pair"
+		},
+		{
+			"key": "HOKKIEN_POP",
+			"value": "Hokkien pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "HONG_KONG_ENGLISH_POP",
+			"value": "Hong Kong English pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "HORRORCORE",
+			"value": "Horrorcore",
+			"__typename": "Pair"
+		},
+		{
+			"key": "HOUSE",
+			"value": "House",
+			"__typename": "Pair"
+		},
+		{
+			"key": "HYPERPOP",
+			"value": "Hyperpop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "HYPHY",
+			"value": "Hyphy",
+			"__typename": "Pair"
+		},
+		{
+			"key": "HYPNAGOGIC_POP",
+			"value": "Hypnagogic pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ILLBIENT",
+			"value": "Illbient",
+			"__typename": "Pair"
+		},
+		{
+			"key": "INDIAN",
+			"value": "Indian",
+			"__typename": "Pair"
+		},
+		{
+			"key": "INDIAN_POP",
+			"value": "Indian pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "INDIE",
+			"value": "Indie",
+			"__typename": "Pair"
+		},
+		{
+			"key": "INDIE_ROCK",
+			"value": "Indie Rock",
+			"__typename": "Pair"
+		},
+		{
+			"key": "INDIETRONICA",
+			"value": "Indietronica",
+			"__typename": "Pair"
+		},
+		{
+			"key": "INDUSTRIAL",
+			"value": "Industrial",
+			"__typename": "Pair"
+		},
+		{
+			"key": "INDUSTRIAL_HIP_HOP",
+			"value": "Industrial hip hop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "INSTRUMENTAL_HIP_HOP",
+			"value": "Instrumental hip hop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ITALO_DANCE",
+			"value": "Italo dance",
+			"__typename": "Pair"
+		},
+		{
+			"key": "JPOP",
+			"value": "J-Pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "JROCK",
+			"value": "J-Rock",
+			"__typename": "Pair"
+		},
+		{
+			"key": "JAZZ",
+			"value": "Jazz",
+			"__typename": "Pair"
+		},
+		{
+			"key": "JAZZ_FUSION",
+			"value": "Jazz Fusion",
+			"__typename": "Pair"
+		},
+		{
+			"key": "JAZZ_RAP",
+			"value": "Jazz rap",
+			"__typename": "Pair"
+		},
+		{
+			"key": "JERK",
+			"value": "Jerk",
+			"__typename": "Pair"
+		},
+		{
+			"key": "JERSEY_CLUB",
+			"value": "Jersey club",
+			"__typename": "Pair"
+		},
+		{
+			"key": "KPOP",
+			"value": "K_Pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "KAYOKYOKU",
+			"value": "Kayōkyoku",
+			"__typename": "Pair"
+		},
+		{
+			"key": "LATIN",
+			"value": "Latin",
+			"__typename": "Pair"
+		},
+		{
+			"key": "LATIN_POP",
+			"value": "Latin Pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "LATIN_TRAP",
+			"value": "Latin trap",
+			"__typename": "Pair"
+		},
+		{
+			"key": "LO_FI",
+			"value": "Lo-fi",
+			"__typename": "Pair"
+		},
+		{
+			"key": "LO_FI_HIP_HOP",
+			"value": "Lo-fi hip hop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "LOUNGE",
+			"value": "Lounge",
+			"__typename": "Pair"
+		},
+		{
+			"key": "LOW_BAP",
+			"value": "Low bap",
+			"__typename": "Pair"
+		},
+		{
+			"key": "MANDOPOP",
+			"value": "Mandopop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "MANELE",
+			"value": "Manele",
+			"__typename": "Pair"
+		},
+		{
+			"key": "METAL",
+			"value": "Metal",
+			"__typename": "Pair"
+		},
+		{
+			"key": "METALCORE",
+			"value": "Metalcore",
+			"__typename": "Pair"
+		},
+		{
+			"key": "MEXICAN_POP",
+			"value": "Mexican pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "MIAMI_BASS",
+			"value": "Miami bass",
+			"__typename": "Pair"
+		},
+		{
+			"key": "MUMBLE_RAP",
+			"value": "Mumble rap",
+			"__typename": "Pair"
+		},
+		{
+			"key": "NASHVILLE_SOUND",
+			"value": "Nashville sound",
+			"__typename": "Pair"
+		},
+		{
+			"key": "NEDERBEAT",
+			"value": "Nederbeat",
+			"__typename": "Pair"
+		},
+		{
+			"key": "NEO_SOUL",
+			"value": "Neo Soul",
+			"__typename": "Pair"
+		},
+		{
+			"key": "NEW_ROMANTIC",
+			"value": "New Romantic",
+			"__typename": "Pair"
+		},
+		{
+			"key": "NEW_SOUL",
+			"value": "New Soul",
+			"__typename": "Pair"
+		},
+		{
+			"key": "NEW_JACK_SWING",
+			"value": "New jack swing",
+			"__typename": "Pair"
+		},
+		{
+			"key": "NORDIK_BEAT",
+			"value": "Nordik beat",
+			"__typename": "Pair"
+		},
+		{
+			"key": "NU_METAL",
+			"value": "Nu Metal",
+			"__typename": "Pair"
+		},
+		{
+			"key": "OLD_SCHOOL",
+			"value": "Old School",
+			"__typename": "Pair"
+		},
+		{
+			"key": "OLD_SCHOOL_HIP_HOP",
+			"value": "Old School Hip Hop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "OPERATIC_POP",
+			"value": "Operatic pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ORCHESTRAL",
+			"value": "Orchestral",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ORCHESTRAL_POP",
+			"value": "Orchestral pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "POP",
+			"value": "Pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "POP_COUNTRY",
+			"value": "Pop / Country",
+			"__typename": "Pair"
+		},
+		{
+			"key": "POP_ELECTRONIC",
+			"value": "Pop / Electronic",
+			"__typename": "Pair"
+		},
+		{
+			"key": "POP_HIP_HOP",
+			"value": "Pop / Hip Hop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "POP_RNB",
+			"value": "Pop / R&B",
+			"__typename": "Pair"
+		},
+		{
+			"key": "POP_ROCK",
+			"value": "Pop / Rock",
+			"__typename": "Pair"
+		},
+		{
+			"key": "POP_RAP",
+			"value": "Pop Rap",
+			"__typename": "Pair"
+		},
+		{
+			"key": "POP_PUNK",
+			"value": "Pop-punk",
+			"__typename": "Pair"
+		},
+		{
+			"key": "POPCORN",
+			"value": "Popcorn",
+			"__typename": "Pair"
+		},
+		{
+			"key": "PORNO_RAP",
+			"value": "Porno rap",
+			"__typename": "Pair"
+		},
+		{
+			"key": "PROGRESSIVE",
+			"value": "Progressive",
+			"__typename": "Pair"
+		},
+		{
+			"key": "PROGRESSIVE_POP",
+			"value": "Progressive pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "PSYCHEDELIC",
+			"value": "Psychedelic",
+			"__typename": "Pair"
+		},
+		{
+			"key": "PSYCHEDELIC_POP",
+			"value": "Psychedelic pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "PUNK",
+			"value": "Punk",
+			"__typename": "Pair"
+		},
+		{
+			"key": "PUNK_ROCK",
+			"value": "Punk Rock",
+			"__typename": "Pair"
+		},
+		{
+			"key": "QUIET_STORM",
+			"value": "Quiet storm",
+			"__typename": "Pair"
+		},
+		{
+			"key": "RNB",
+			"value": "R&B",
+			"__typename": "Pair"
+		},
+		{
+			"key": "RAGE_BEATS",
+			"value": "Rage / Rage Beats",
+			"__typename": "Pair"
+		},
+		{
+			"key": "RAGGA_HIP_HOP",
+			"value": "Ragga hip hop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "RAP_METAL",
+			"value": "Rap metal",
+			"__typename": "Pair"
+		},
+		{
+			"key": "RAP_OPERA",
+			"value": "Rap opera",
+			"__typename": "Pair"
+		},
+		{
+			"key": "RAP_ROCK",
+			"value": "Rap rock",
+			"__typename": "Pair"
+		},
+		{
+			"key": "REGGAE",
+			"value": "Reggae",
+			"__typename": "Pair"
+		},
+		{
+			"key": "REGGAETON",
+			"value": "Reggaeton",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ROCK",
+			"value": "Rock",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ROCK_N_ROLL",
+			"value": "Rock & Roll",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ROCKABILLY",
+			"value": "Rockabilly",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ROOTS",
+			"value": "Roots",
+			"__typename": "Pair"
+		},
+		{
+			"key": "RUSSIAN_POP",
+			"value": "Russian pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SALSA",
+			"value": "Salsa",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SCAM_RAP",
+			"value": "Scam rap",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SENTIMENTAL_BALLAD",
+			"value": "Sentimental ballad",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SHIBUYA_KEI",
+			"value": "Shibuya-kei",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SHIDAIQU",
+			"value": "Shidaiqu",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SKA",
+			"value": "Ska",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SKILADIKO",
+			"value": "Skiladiko",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SMOOTH_JAZZ_N_VOCAL_JAZZ",
+			"value": "Smooth Jazz and Vocal Jazz",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SMOOTH_RNB",
+			"value": "Smooth R&B",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SMOOTH_JAZZ",
+			"value": "Smooth jazz",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SNAP",
+			"value": "Snap",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SOPHISTI_POP",
+			"value": "Sophisti-pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SOUL",
+			"value": "Soul",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SPACE_AGE_POP",
+			"value": "Space age pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "STRONDA",
+			"value": "Stronda",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SUNDANESE_POP",
+			"value": "Sundanese pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SUNSHINE_POP",
+			"value": "Sunshine pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SWAMP_POP",
+			"value": "Swamp pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SWING",
+			"value": "Swing",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SYMPHONIC_POP",
+			"value": "Symphonic pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SYNTH_POP",
+			"value": "Synth-pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "SYNTHWAVE",
+			"value": "Synthwave",
+			"__typename": "Pair"
+		},
+		{
+			"key": "TALLAVA",
+			"value": "Tallava",
+			"__typename": "Pair"
+		},
+		{
+			"key": "TECHNO",
+			"value": "Techno",
+			"__typename": "Pair"
+		},
+		{
+			"key": "TEEN_POP",
+			"value": "Teen pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "TEXAS_COUNTRY",
+			"value": "Texas Country",
+			"__typename": "Pair"
+		},
+		{
+			"key": "THAI_POP",
+			"value": "Thai pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "TRASH_METAL",
+			"value": "Thrash Metal",
+			"__typename": "Pair"
+		},
+		{
+			"key": "TRADITIONAL_POP",
+			"value": "Traditional pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "TRANCE",
+			"value": "Trance",
+			"__typename": "Pair"
+		},
+		{
+			"key": "TRAP",
+			"value": "Trap",
+			"__typename": "Pair"
+		},
+		{
+			"key": "TREAD_RAP",
+			"value": "Tread rap",
+			"__typename": "Pair"
+		},
+		{
+			"key": "TRIP_HOP",
+			"value": "Trip Hop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "TROPICAL_HOUSE",
+			"value": "Tropical House",
+			"__typename": "Pair"
+		},
+		{
+			"key": "TROPICAL_ROCK",
+			"value": "Tropical rock",
+			"__typename": "Pair"
+		},
+		{
+			"key": "TROPIPOP",
+			"value": "Tropipop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "TURBO_FOLK",
+			"value": "Turbo-folk",
+			"__typename": "Pair"
+		},
+		{
+			"key": "TURNTABLISM",
+			"value": "Turntablism",
+			"__typename": "Pair"
+		},
+		{
+			"key": "UK_GRIME",
+			"value": "UK Grime",
+			"__typename": "Pair"
+		},
+		{
+			"key": "UNDERGROUND",
+			"value": "Underground",
+			"__typename": "Pair"
+		},
+		{
+			"key": "UNDERGROUND_HIP_HOP",
+			"value": "Underground hip hop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "VISPOP",
+			"value": "Vispop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "WEST_COAST",
+			"value": "West Coast",
+			"__typename": "Pair"
+		},
+		{
+			"key": "WESTERN",
+			"value": "Western",
+			"__typename": "Pair"
+		},
+		{
+			"key": "WESTERN_SWING",
+			"value": "Western Swing",
+			"__typename": "Pair"
+		},
+		{
+			"key": "WONG_SHADOW",
+			"value": "Wong shadow",
+			"__typename": "Pair"
+		},
+		{
+			"key": "WONKY_POP",
+			"value": "Wonky pop",
+			"__typename": "Pair"
+		},
+		{
+			"key": "WORLD",
+			"value": "World",
+			"__typename": "Pair"
+		},
+		{
+			"key": "ZHONGGUO_FENG",
+			"value": "Zhongguo feng",
+			"__typename": "Pair"
+		}
+	]
+}

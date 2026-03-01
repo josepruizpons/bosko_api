@@ -5,6 +5,9 @@ import { db } from '../db'
 import { db_profile_to_profile } from '../mappers';
 import { PLATFORMS } from '../constants';
 import type { Platform } from '../types/types';
+import bs_genres_data from '../api/bs_genres.json';
+
+const VALID_GENRE_KEYS = new Set(bs_genres_data.genres.map((g: { key: string }) => g.key));
 
 export const profiles_router = express.Router()
 
@@ -189,7 +192,14 @@ profiles_router.patch('/:id/connections/:platform',
     const updateData: Record<string, unknown> = {}
 
     if ('meta' in req.body) {
-      updateData.meta = req.body.meta
+      const meta = req.body.meta
+      if (platform === PLATFORMS.BEATSTARS && meta && Array.isArray(meta.genres)) {
+        const invalid = (meta.genres as unknown[]).filter(k => typeof k !== 'string' || !VALID_GENRE_KEYS.has(k))
+        if (invalid.length > 0) {
+          return api_error400(`Invalid genre keys: ${invalid.join(', ')}`)
+        }
+      }
+      updateData.meta = meta
     }
 
     if ('id_oauth' in req.body) {
