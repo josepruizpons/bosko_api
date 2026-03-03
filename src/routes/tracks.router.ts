@@ -22,7 +22,7 @@ tracks_router.get('/last-scheduled',
       const results = await Promise.all(
         profiles.map(async (profile) => {
           const track = await db.track.findFirst({
-            where: { id_profile: profile.id, yt_url: null },
+            where: { id_profile: profile.id },
             orderBy: { publish_at: 'desc' },
             select: { publish_at: true },
           })
