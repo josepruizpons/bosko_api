@@ -82,13 +82,12 @@ app.get('/google/auth_callback', async (req, res) => {
   if (!userId || !id_profile) return api_error400('Invalid state: missing userId or id_profile')
 
   req.session.userId = userId
-  const user = await get_current_user(req)
+  await get_current_user(req)
   const google_client = await get_google_client(id_profile)
   const code = req.query.code;
 
   if (code === undefined || typeof code !== 'string') {
-    api_error400('Invalid code')
-    return
+    return api_error400('Invalid code')
   }
 
   //WARN: check if session applies to this endpoint

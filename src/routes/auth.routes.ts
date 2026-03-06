@@ -7,7 +7,6 @@ import { db } from '../db'
 export const auth_router = express.Router()
 
 auth_router.post('/login', async (req, res) => {
-  console.log(req.body)
   const { email, password } = req.body ?? { email: undefined, password: undefined }
   if (
     typeof email != 'string'
@@ -30,7 +29,6 @@ auth_router.post('/login', async (req, res) => {
     return api_error403('Invalid password')
   }
 
-  console.log({ user })
   req.session.userId = user.id;
   return res.status(200).send({ success: true })
 })

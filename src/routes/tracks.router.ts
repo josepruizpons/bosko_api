@@ -22,7 +22,7 @@ tracks_router.get('/last-scheduled',
       const results = await Promise.all(
         profiles.map(async (profile) => {
           const track = await db.track.findFirst({
-            where: { id_profile: profile.id },
+            where: { id_profile: profile.id, yt_url: {not: null} },
             orderBy: { publish_at: 'desc' },
             select: { publish_at: true },
           })
@@ -63,6 +63,7 @@ tracks_router.get('/pending',
           { created_at: "asc" }
         ]
       })
+      console.log(JSON.stringify(db_tracks, null, 2))
       const tracks = await Promise.all(
         db_tracks.map(
           async (track) => await db_track_to_track(track)

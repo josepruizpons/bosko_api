@@ -4,7 +4,6 @@ import { api_error400, api_error403, api_error404 } from '../errors';
 import { db } from '../db'
 import { db_profile_to_profile } from '../mappers';
 import { PLATFORMS } from '../constants';
-import type { Platform } from '../types/types';
 import bs_genres_data from '../api/bs_genres.json';
 
 const VALID_GENRE_KEYS = new Set(bs_genres_data.genres.map((g: { key: string }) => g.key));

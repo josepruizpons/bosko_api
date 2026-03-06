@@ -78,7 +78,6 @@ bs_router.post(
     );
 
     const assetBody = await createAssetResponse.json();
-    console.log((JSON.stringify(assetBody, null, 2)))
     const assetErrors = checkGraphQLErrors(assetBody);
     if (assetErrors.hasErrors) {
       return api_error500(assetErrors.messages.join(' | '));
@@ -114,7 +113,6 @@ bs_router.post(
     }
 
     const { url, fields } = await s3ParamsRes.json();
-    console.log({ url, fields: JSON.stringify(fields, null, 2) })
 
     // Prepare BeatStars upload form
     const form = new FormData();
@@ -129,7 +127,6 @@ bs_router.post(
 
     // Check BeatStars upload result
     const text = await beatstarsUploadRes.text();
-    console.log({ text: JSON.stringify(text, null, 2) })
     if (beatstarsUploadRes.status !== 201) {
       return api_error500(`BeatStars S3 upload failed: ${text}`);
     }
@@ -373,7 +370,6 @@ bs_router.post('/publish',
         } = await check_track_response.json()
         const check_track_graphql_errors = checkGraphQLErrors(check_track_body)
 
-        console.log(JSON.stringify(check_track_body, null, 2))
 
         if (check_track_graphql_errors.hasErrors) {
           return api_error500(check_track_graphql_errors.messages.join(' - '))
@@ -387,8 +383,6 @@ bs_router.post('/publish',
 
         has_bundle = bundle !== null && bundle.progress === 'COMPLETE'
       }
-
-      console.log(JSON.stringify(raw, null, 2))
 
       const publish_track_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=PublishTrackForm", {
         method: "POST",

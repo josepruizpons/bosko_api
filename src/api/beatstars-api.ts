@@ -2,7 +2,6 @@ import { PLATFORMS } from "../constants";
 import { db } from "../db";
 import { api_error400, api_error500 } from "../errors";
 import { BeatStarsLoginResponse, BeatStarsTrack } from "../types/bs_types";
-import { UserInfo } from "../types/types"
 import { checkGraphQLErrors } from "../utils"
 
 export async function get_beatstars_token(id_profile: string) {
@@ -46,7 +45,6 @@ export const get_bs_track_by_id = async (
     "Content-Type": "application/json"
   }
 
-  console.log({headers})
 
 
   const check_track_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=GetTrack", {
@@ -77,8 +75,6 @@ export const get_bs_track_by_id = async (
     console.log({errors: check_track_graphql_errors.messages.join(' - ')})
     return null
   }
-
-  console.log(JSON.stringify(check_track_body, null, 2))
 
   return check_track_body.data.member.inventory.track
 }
