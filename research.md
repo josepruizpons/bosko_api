@@ -117,7 +117,8 @@ model oauth {
 
 - Para **YouTube**: el SDK de Google usa el `refresh_token` para renovar automáticamente.
 - Para **BeatStars**: se llama al endpoint de token BeatStars en cada request para obtener un `access_token` fresco (no se cachea).
-- **No hay endpoint de API para crear filas `oauth`** — se deben insertar manualmente en la BD.
+- **YouTube**: las filas `oauth` + `profile_connections` se crean automáticamente en el callback OAuth (`GET /google/auth_callback`). Si ya existen, solo se actualiza el `refresh_token`.
+- **BeatStars**: no hay callback OAuth estándar; el `refresh_token` se extrae via snippet de consola en `studio.beatstars.com` y se envía al backend, que crea/actualiza la fila `oauth` correspondiente.
 
 #### `profile_connections`
 
@@ -265,7 +266,7 @@ users (1) ──── (many) oauth
                └── oauth BEATSTARS (client_id, client_secret, refresh_token)
 ```
 
-**No hay endpoints de API para crear/gestionar estas filas** — se insertan manualmente en BD.
+**YouTube:** las filas se crean automáticamente en `GET /google/auth_callback` (OAuth2 popup flow). **BeatStars:** se crean via snippet de consola en `studio.beatstars.com` que envía el `refresh_token` al backend.
 
 ### Nivel 2: `profile_connections` — Conexión de un perfil a una plataforma
 
@@ -412,7 +413,8 @@ Los metadatos del track (tags, géneros, BPM) se leen de `profile_connections.me
 ### Google / YouTube
 
 - OAuth2 con scope `youtube` completo
-- Flujo: popup → `/api/google/connect` → URL auth → callback → guarda `refresh_token`
+  - Flujo: popup → `GET /api/google/connect` (construye OAuth2 client desde env vars, devuelve auth URL con `state: { userId, id_profile }`) → Google → `GET /google/auth_callback` (público, sin sesión) → intercambia code por tokens → crea/actualiza `oauth` + `profile_connections` → cierra popup via `window.close()` + `postMessage({ type: "google-auth-success" }, "*")`
+  - El frontend abre el popup y detecta el éxito por `postMessage` o polling de `GET /api/user/info`
 - El video se genera localmente con `ffmpeg` (dev) o via Lambda (prod)
 - Parámetros del video: 1920×1080, letterbox, `libx264`, `aac` 192k, scheduled (`publishAt`)
 - La descripción del video se lee de `profile_connections.meta.description` y se sustituye `{bs_url}` por la URL real del track en BeatStars
@@ -436,11 +438,10 @@ Los IDs de `users` son enteros auto-increment. Los de `oauth` también.
 ## Gaps y TODOs conocidos
 
 1. **`profile_connections.meta` parcialmente conectado al publishing** — YouTube ya usa `description` con `{bs_url}`; BeatStars usa `tags`/`genres`/`bpm` de meta con fallbacks hardcodeados. El próximo paso es eliminar los fallbacks hardcodeados.
-2. **No hay endpoint para crear/conectar `oauth`** — las credenciales de BeatStars/YouTube se insertan manualmente en BD; `todo.md` menciona automatizarlo con Playwright
+2. **BeatStars OAuth** — el `refresh_token` se obtiene via snippet de consola en `studio.beatstars.com`. El snippet envía el token al backend y cierra el tab. No hay callback OAuth estándar.
 3. **No hay endpoint de listado de assets** — solo `POST` (crear) y `GET /:id` (stream)
 4. **Session store in-memory** — las sesiones se pierden al reiniciar; no escala a múltiples procesos
 5. **Dos sistemas de status de track** en `utils.ts` y `track_status.ts` — deberían unificarse
 6. **`get_profile()` en `utils.ts`** — declarada pero sin implementación
 7. **`TRACK_STATUS.LOADING`** — definida pero nunca retornada por ninguna función de status
 8. **`error_message` en `track`** — campo en schema pero no se escribe en ningún lugar del código actual
-9. **BeatStars OAuth** — no hay callback OAuth estándar para BeatStars; se usa directamente `refresh_token` pre-insertado

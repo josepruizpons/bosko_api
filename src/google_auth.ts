@@ -1,6 +1,6 @@
 import { google } from 'googleapis'
 import { db } from './db'
-import { api_error400, api_error500 } from './errors'
+import { api_error400 } from './errors'
 import { PLATFORMS, PROD_HOSTNAME } from './constants'
 
 

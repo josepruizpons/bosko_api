@@ -1,229 +1,297 @@
-# Plan: Migración a sistema de perfiles
+# Plan: BeatStars OAuth via Playwright
 
 ## Contexto
 
-Actualmente toda la app opera a nivel de `user`: tracks, assets, credenciales OAuth y publicación se resuelven por `id_user`. El schema de BD ya tiene las tablas `profiles` y `profile_connections`, pero el código las ignora. El objetivo es que **todo lo operacional (tracks, assets, publicación) pase a nivel de perfil**, y el usuario sea simplemente la cuenta de login que agrupa perfiles.
+Actualmente añadir una conexión BeatStars a un perfil requiere tener un `oauth` pre-existente
+en la base de datos con `client_id`, `client_secret` y `refresh_token` de BeatStars. No hay
+ningún flujo automatizado para obtener esas credenciales.
 
-## Modelo mental objetivo
+El objetivo es crear un endpoint que, dado el email y password de BeatStars del usuario:
+1. Lance un browser headless con Playwright
+2. Complete el flujo de login de BeatStars en dos pasos (email → password)
+3. Intercepte la petición de refresh token que el navegador hace automáticamente antes del submit final
+4. Extraiga `refresh_token`, `client_id` y `client_secret` del body de esa petición
+5. Persista esos datos en BD, creando el `oauth` y el `profile_connections`
 
-```
-Usuario (login, email, password)
- └── Perfil "Artista A"
- │    ├── Conexión BEATSTARS (→ oauth con credenciales BS)
- │    │    └── meta: { tags, genres, bpm }
- │    ├── Conexión YOUTUBE (→ oauth con credenciales YT)
- │    │    └── meta: { description }
- │    ├── Track 1 (beat + thumbnail)
- │    ├── Track 2
- │    └── Assets (beats, thumbnails)
- └── Perfil "Artista B"
-      ├── Conexión BEATSTARS (→ otro oauth o el mismo)
-      ├── Conexión YOUTUBE (→ otro oauth o el mismo)
-      ├── Track 3
-      └── Assets
-```
-
-Un usuario puede tener N perfiles. Cada perfil puede tener 0-1 conexión YouTube y 0-1 conexión BeatStars. Tracks y assets pertenecen a un perfil (no al usuario directamente).
+**Compliance:** El email y password se usan exclusivamente en memoria durante la sesión de
+Playwright. No se persisten, no se loggean, no se pasan a ninguna función secundaria.
 
 ---
 
-## Cambios necesarios
+## La petición que se intercepta
 
-### 1. Schema / BD
-
-No se necesitan cambios de schema. Las tablas y columnas ya existen:
-- `track.id_profile` (nullable) — ya existe en BD
-- `asset.id_profile` (nullable) — ya existe en BD
-- `profile_connections` — tabla completa ya existe
-- `profiles` — tabla completa ya existe
-
-Lo que sí hay que decidir:
-- **Hacer `track.id_profile` NOT NULL?** Sí, eventualmente. Pero para la migración conviene dejarlo nullable y rellenarlo con los datos existentes primero (migration script).
-- **Hacer `asset.id_profile` NOT NULL?** Mismo approach.
-
-**Acción:** Crear un migration script que:
-1. Para los usuarios existentes, cree un perfil por defecto si no tienen ninguno
-2. Asigne `id_profile` a todos los tracks y assets que tengan `id_profile = NULL`, usando el perfil por defecto del usuario
-3. Mueva las filas `oauth` existentes a `profile_connections` si aún no están vinculadas
-
-### 2. Credential resolution — La pieza central
-
-Actualmente `get_beatstars_token(user_id)` y `get_google_client(user_id)` buscan en `oauth` por `id_user`. Esto tiene que cambiar para que busquen por **perfil**:
-
-**Nuevo flujo:**
-```
-get_beatstars_token(id_profile)
-  1. db.profile_connections.findFirst({ id_profile, platform: 'BEATSTARS' })
-  2. Obtener id_oauth de esa conexión
-  3. db.oauth.findUnique({ id: id_oauth })
-  4. Usar esas credenciales para obtener el token
-```
+Cuando el usuario va a hacer submit del password en el paso 2 del login, BeatStars lanza
+automáticamente esta petición **antes** de que el usuario pulse Continue:
 
 ```
-get_google_client(id_profile)
-  1. db.profile_connections.findFirst({ id_profile, platform: 'YOUTUBE' })
-  2. Obtener id_oauth de esa conexión
-  3. db.oauth.findUnique({ id: id_oauth })
-  4. Crear el OAuth2 client con esas credenciales
+POST https://core.prod.beatstars.net/auth/oauth/token
+Content-Type: application/x-www-form-urlencoded
+
+refresh_token=eyJ...&client_id=5615656127.beatstars.com&client_secret=2a$16$...&grant_type=refresh_token
 ```
 
-**Archivos a modificar:**
-- `src/api/beatstars-api.ts` — `get_beatstars_token(user_id)` → `get_beatstars_token(id_profile)`
-- `src/google_auth.ts` — `get_google_client(user_id)` → `get_google_client(id_profile)`
+**Lo que nos interesa extraer del request body:**
 
-### 3. Rutas de tracks — Scopear por perfil
+| Campo | Descripción |
+|-------|-------------|
+| `refresh_token` | Token de larga duración — lo que `get_beatstars_token()` usa para obtener access tokens |
+| `client_id` | Identificador de la app OAuth de BeatStars del usuario |
+| `client_secret` | Secret de la app OAuth del usuario |
 
-Actualmente los endpoints de tracks filtran solo por `id_user`. Necesitan aceptar un `id_profile` y filtrar por él.
+No es necesario leer la response. Los 3 campos que se quieren persistir están todos en el
+**request body**. El `access_token` (cabecera `Authorization` del request) caduca en minutos
+y no se guarda; `get_beatstars_token()` ya lo obtiene fresco en cada uso mediante el refresh.
 
-**`GET /api/tracks/pending`** (`tracks.router.ts:12`)
-- Actualmente: `where: { yt_url: null, id_user: user.id }`
-- Nuevo: Recibir `id_profile` como query param. Filtrar `where: { yt_url: null, id_profile }`. Verificar que el perfil pertenece al usuario.
+---
 
-**`POST /api/tracks`** (`tracks.router.ts:38`)
-- Actualmente: `data: { id_user: user.id, ... }`
-- Nuevo: Recibir `id_profile` en el body. Verificar que el perfil pertenece al usuario. Crear con `data: { id_user: user.id, id_profile, ... }`
+## Flujo de la UI de BeatStars
 
-**`PATCH /api/tracks/:id`** (`tracks.router.ts:116`)
-- El ownership check ya va por `id_user`, eso está bien. No necesita cambiar mucho, pero verificar que el perfil del track coincide si se quiere ser estricto.
+El login de BeatStars OAuth es un flujo de dos páginas:
 
-**`DELETE /api/tracks/:id`** (`tracks.router.ts:199`)
-- Mismo caso que PATCH, el ownership va por `id_user`.
+### Página 1 — `https://oauth.beatstars.com/verify`
 
-### 4. Rutas de assets — Scopear por perfil
+Contiene un input de email:
+```html
+<input type="email" id="oath-email" placeholder="Type your email or username" />
+```
 
-**`POST /api/assets`** (`assets.router.ts:43`)
-- Actualmente: `data: { id_user: user.id, ... }`
-- Nuevo: Recibir `id_profile` en el body. Crear con `data: { id_user: user.id, id_profile, ... }`
+Y un botón de continuar:
+```html
+<button type="submit" class="bs-btn action-element"><span>Continue</span></button>
+```
 
-**`GET /api/assets/:id`** (`assets.router.ts:104`)
-- El ownership check va por `id_user`, está bien como fallback de seguridad.
+Al hacer submit navega a la página 2.
 
-### 5. Rutas de BeatStars — Usar credenciales del perfil
+### Página 2 — `https://oauth.beatstars.com/login`
 
-**`POST /api/bs/upload`** (`beatstars.routes.ts:13`)
-- Actualmente: `get_beatstars_token(user.id)`
-- Nuevo: Obtener el track/asset → sacar su `id_profile` → `get_beatstars_token(id_profile)`
-- Si el asset no tiene perfil, error
+Contiene un input de password:
+```html
+<input type="password" id="userPassword" placeholder="Type your password" />
+```
 
-**`POST /api/bs/publish`** (`beatstars.routes.ts:143`)
-- Actualmente: `get_beatstars_token(user.id)`
-- Nuevo: Obtener el track → sacar su `id_profile` → `get_beatstars_token(id_profile)`
-- **Los tags/genres/bpm hardcodeados** (líneas 293-305) → leer de `profile_connections.meta` del perfil y mantener lo actual como fallback
-- **La description** (vacía, línea 290) → podría venir de meta también y mantener lo actual como fallback
+Y un botón de continuar:
+```html
+<button type="submit" class="bs-btn action-element"><span>Continue</span></button>
+```
 
-### 6. Rutas de Google/YouTube — Usar credenciales del perfil
+**La petición OAuth a interceptar se dispara antes del submit de esta página.**
+Por tanto, el interceptor debe estar activo desde el inicio, y la captura ocurre
+mientras el usuario (Playwright) está en la página 2, antes o justo al hacer click en Continue.
 
-**`GET /api/google/connect`** (`google.routes.ts:13`)
-- Actualmente: `get_google_client(user.id)`
-- Nuevo: Recibir `id_profile` como query param. Usar `get_google_client(id_profile)`.
-- El `state` del OAuth debe codificar tanto `userId` como `id_profile` para que el callback sepa a qué perfil asociar el token.
+---
 
-**`GET /google/auth_callback`** (`app.ts:68`)
-- Actualmente: `state` = `userId` como string
-- Nuevo: `state` = `JSON.stringify({ userId, id_profile })` → parsear en el callback. Actualizar el `oauth.refresh_token` correcto (el que está vinculado via `profile_connections` al perfil).
+## Endpoint
 
-**`POST /api/google/upload-youtube`** (`google.routes.ts:33`)
-- Actualmente: `get_google_client(user.id)`
-- Nuevo: Obtener el track → sacar su `id_profile` → `get_google_client(id_profile)`
-- **La description del video** (línea 127) → leer de `profile_connections.meta.description` del perfil en lugar de hardcodear
+```
+POST /api/profiles/:id/connections/beatstars
+```
 
-### 7. Mappers — `db_track_to_track` necesita id_profile
+Se añade en `src/routes/profiles.router.ts`. Protegido por `validate_session` (igual que el
+resto de `/api`).
 
-`db_track_to_track` llama a `get_bs_track_by_id(db_track.id_user, ...)`. Esto tiene que cambiar a `get_bs_track_by_id(db_track.id_profile, ...)` ya que el token se resolverá por perfil.
+### Request
 
-**Archivo:** `src/mappers.ts:24-27`
-
-### 8. Ruta de usuario — Reestructurar `UserInfo`
-
-**`GET /api/user/info`** (`user.routes.ts:10`)
-
-El campo `connections: { youtube: boolean, beatstars: boolean }` a nivel de usuario ya no tiene sentido (cada perfil tiene sus propias conexiones). Opciones:
-- **Eliminar** `UserInfo.connections` del nivel usuario
-- **Mantenerlo** como comodidad (hay algún oauth YOUTUBE/BEATSTARS en algún perfil del usuario) — pero es confuso
-
-Recomendación: eliminarlo. El frontend debe mirar las conexiones de cada perfil individual.
-
-### 9. Endpoints nuevos: CRUD de perfiles
-
-Crear `src/routes/profiles.router.ts`:
-
-**`GET /api/profiles`** — Listar perfiles del usuario
-**`POST /api/profiles`** — Crear perfil
-**`PATCH /api/profiles/:id`** — Editar nombre/settings
-**`DELETE /api/profiles/:id`** — Borrar perfil (cascade borra tracks, assets, connections)
-
-### 10. Endpoints nuevos: Gestión de conexiones por perfil
-
-Posiblemente en el mismo router de perfiles o uno separado:
-
-**`POST /api/profiles/:id/connections`** — Crear conexión (vincular un oauth a un perfil para una plataforma)
-**`DELETE /api/profiles/:id/connections/:platform`** — Desvincular conexión
-**`PATCH /api/profiles/:id/connections/:platform`** — Actualizar meta (tags, description)
-
-### 11. Helper `get_profile` — Implementar
-
-`src/utils.ts:171` tiene `get_profile()` declarada pero sin cuerpo. Implementarla:
-
-```typescript
-export async function get_profile(id_user: number, id_profile: string) {
-  const profile = await db.profiles.findUnique({
-    where: { id: id_profile },
-    include: { profile_connections: true }
-  })
-  if (!profile) return api_error404('Profile not found')
-  if (profile.id_user !== id_user) return api_error403('Profile does not belong to user')
-  return profile
+```json
+{
+  "email": "user@beatstars.com",
+  "password": "su_password_de_beatstars"
 }
 ```
 
-Usarla en todas las rutas que reciban `id_profile` para verificar ownership.
+### Response `201`
+
+El perfil actualizado, igual que devuelve el resto de endpoints de conexión:
+
+```json
+{
+  "id": "abc123",
+  "name": "Mi Perfil",
+  "connections": [
+    { "platform": "BEATSTARS", "is_active": true, "meta": {} }
+  ]
+}
+```
+
+### Errores posibles
+
+| Status | Causa |
+|--------|-------|
+| `400` | Falta `email` o `password` en el body |
+| `400` | Ya existe una conexión BEATSTARS para este perfil |
+| `403` | El perfil no pertenece al usuario autenticado |
+| `404` | Perfil no encontrado |
+| `500` | Playwright no pudo completar el login (credenciales incorrectas, timeout, cambio en la UI de BS) |
+| `500` | No se interceptó la petición OAuth en el tiempo esperado |
 
 ---
 
-## Orden de implementación
+## Implementación
 
-El orden importa para no romper la app durante la migración:
+### Paso 1 — Instalar Playwright
 
-### Fase 1: Preparar las bases (no rompe nada existente)
-1. Implementar `get_profile()` en utils
-2. Crear el CRUD de perfiles (`profiles.router.ts`)
-3. Crear los endpoints de gestión de conexiones por perfil
+```bash
+npm install playwright
+npx playwright install chromium
+```
 
-### Fase 2: Migrar credenciales (cambio central)
-4. Refactorizar `get_beatstars_token(id_profile)` — que busque por `profile_connections` → `oauth`
-5. Refactorizar `get_google_client(id_profile)` — mismo approach
-6. Actualizar `get_bs_track_by_id` para recibir `id_profile` en vez de `user_id`
-
-### Fase 3: Migrar rutas (el código usa el nuevo sistema)
-7. Actualizar `POST /api/tracks` para recibir y guardar `id_profile`
-8. Actualizar `GET /api/tracks/pending` para filtrar por `id_profile`
-9. Actualizar `POST /api/assets` para recibir y guardar `id_profile`
-10. Actualizar `POST /api/bs/upload` para resolver credenciales por perfil del asset/track
-11. Actualizar `POST /api/bs/publish` para resolver credenciales por perfil + leer meta (tags, etc.)
-12. Actualizar `POST /api/google/upload-youtube` para resolver credenciales por perfil + leer meta (description)
-13. Actualizar `GET /api/google/connect` para recibir `id_profile` + codificarlo en `state`
-14. Actualizar `GET /google/auth_callback` para parsear `id_profile` del `state`
-15. Actualizar mappers (`db_track_to_track`)
-16. Actualizar `GET /api/user/info` — eliminar `connections` a nivel usuario
-
-### Fase 4: Datos existentes
-17. Migration script: crear perfiles por defecto, asignar `id_profile` a tracks/assets existentes, crear `profile_connections` a partir de `oauth` existentes
+Dependencia de producción: el endpoint se ejecuta en el servidor.
 
 ---
 
-## Resumen de archivos a tocar
+### Paso 2 — `src/api/beatstars-playwright.ts` (archivo nuevo)
 
-| Archivo | Cambio |
+Módulo responsable de toda la lógica de Playwright. Exporta una sola función:
+
+```ts
+export interface BeatStarsOAuthResult {
+  refresh_token: string
+  client_id: string
+  client_secret: string
+}
+
+export async function getBeatStarsTokensViaPlaywright(
+  email: string,
+  password: string
+): Promise<BeatStarsOAuthResult>
+```
+
+**Flujo interno paso a paso:**
+
+1. Lanzar `chromium` en modo headless
+2. Registrar `page.on('request', handler)` **antes** de navegar — el handler filtra:
+   - URL exacta: `https://core.prod.beatstars.net/auth/oauth/token`
+   - Método: `POST`
+   - Body form-urlencoded con `grant_type=refresh_token`
+   - Cuando se captura, parsea el body y resuelve la Promise con `{ refresh_token, client_id, client_secret }`
+3. Navegar a `https://oauth.beatstars.com/verify`
+4. Esperar a que `#oath-email` esté visible y rellenar con el email
+5. Hacer click en `button[type="submit"]` y esperar navegación a `/login`
+6. Esperar a que `#userPassword` esté visible y rellenar con el password
+7. Hacer click en `button[type="submit"]`
+8. Esperar a que se resuelva la capturePromise (con timeout de 30s en race) — **la petición OAuth se dispara después del click, el interceptor la captura en este await**
+9. Cerrar el browser (siempre en `finally`)
+10. Devolver `{ refresh_token, client_id, client_secret }`
+
+**Implementación del interceptor con Promise:**
+
+```ts
+let resolveCapture!: (result: BeatStarsOAuthResult) => void
+const capturePromise = new Promise<BeatStarsOAuthResult>((res) => {
+  resolveCapture = res
+})
+
+page.on('request', (request) => {
+  if (
+    request.url() === 'https://core.prod.beatstars.net/auth/oauth/token' &&
+    request.method() === 'POST'
+  ) {
+    const body = new URLSearchParams(request.postData() ?? '')
+    if (body.get('grant_type') !== 'refresh_token') return
+    resolveCapture({
+      refresh_token: body.get('refresh_token') ?? '',
+      client_id: body.get('client_id') ?? '',
+      client_secret: body.get('client_secret') ?? '',
+    })
+  }
+})
+
+const timeout = new Promise<never>((_, rej) =>
+  setTimeout(() => rej(new Error('BeatStars OAuth capture timed out after 30s')), 30_000)
+)
+
+// Paso 1: email
+await page.goto('https://oauth.beatstars.com/verify')
+await page.waitForSelector('#oath-email')
+await page.fill('#oath-email', email)
+await page.click('button[type="submit"]')
+
+// Paso 2: password
+await page.waitForURL('**/login')
+await page.waitForSelector('#userPassword')
+await page.fill('#userPassword', password)
+
+// Click dispara la petición; el interceptor la captura asíncronamente
+await page.click('button[type="submit"]')
+
+// Esperar a que el interceptor resuelva la Promise (la petición llega tras el submit)
+const result = await Promise.race([capturePromise, timeout])
+```
+
+**Gestión de errores:**
+- Browser siempre se cierra en `finally` — no quedan procesos zombi
+- Si la petición OAuth no aparece antes del timeout → error descriptivo
+- Si algún selector no se encuentra → Playwright lanza `TimeoutError` con contexto
+
+---
+
+### Paso 3 — Nuevo endpoint en `profiles.router.ts`
+
+```
+POST /api/profiles/:id/connections/beatstars
+```
+
+**Flujo del handler:**
+
+1. `get_current_user(req)` — verificar sesión
+2. `get_profile(user.id, id_profile)` — verificar que el perfil existe y pertenece al usuario
+3. Validar que `email` y `password` son strings no vacíos; si no → `api_error400`
+4. Comprobar en BD que no existe ya una conexión BEATSTARS para este perfil:
+   ```ts
+   db.profile_connections.findUnique({
+     where: { id_profile_platform: { id_profile, platform: 'BEATSTARS' } }
+   })
+   ```
+   Si existe → `api_error400('Profile already has a BEATSTARS connection')`
+5. Llamar a `getBeatStarsTokensViaPlaywright(email, password)`
+   — a partir de aquí las credenciales ya no se usan ni referencian
+6. Crear el registro `oauth` en BD:
+   ```ts
+   db.oauth.create({
+     data: {
+       id_user: user.id,
+       connection_type: 'BEATSTARS',
+       access_token: null,        // no se guarda; se obtiene fresco en cada uso via refresh
+       refresh_token: result.refresh_token,
+       client_id: result.client_id,
+       client_secret: result.client_secret,
+     }
+   })
+   ```
+7. Crear el `profile_connections`:
+   ```ts
+   db.profile_connections.create({
+     data: {
+       id: generate_id(),
+       id_profile,
+       id_oauth: oauth.id,
+       platform: PLATFORMS.BEATSTARS,
+       meta: {},
+     }
+   })
+   ```
+8. Consultar el perfil actualizado y devolverlo con `db_profile_to_profile`
+
+---
+
+## Archivos a crear / modificar
+
+| Archivo | Acción |
 |---------|--------|
-| `src/utils.ts` | Implementar `get_profile()` |
-| `src/api/beatstars-api.ts` | `get_beatstars_token(id_profile)`, `get_bs_track_by_id(id_profile, ...)` |
-| `src/google_auth.ts` | `get_google_client(id_profile)` |
-| `src/routes/tracks.router.ts` | Recibir `id_profile`, filtrar y guardar por perfil |
-| `src/routes/assets.router.ts` | Recibir `id_profile`, guardar por perfil |
-| `src/routes/beatstars.routes.ts` | Resolver credenciales por perfil, leer meta |
-| `src/routes/google.routes.ts` | Resolver credenciales por perfil, leer meta |
-| `src/routes/app.ts` | Actualizar Google callback (parsear state con id_profile) |
-| `src/routes/user.routes.ts` | Reestructurar UserInfo |
-| `src/mappers.ts` | `db_track_to_track` usa id_profile para resolver BS |
-| `src/types/types.ts` | Actualizar UserInfo, quizás BeatstarsMeta |
-| `src/routes/profiles.router.ts` | **NUEVO** — CRUD perfiles + conexiones |
+| `package.json` | Añadir `playwright` como dependencia |
+| `src/api/beatstars-playwright.ts` | **NUEVO** — lógica de Playwright |
+| `src/routes/profiles.router.ts` | Añadir `POST /:id/connections/beatstars` |
+
+Sin cambios en BD, sin migraciones, sin cambios en otros routers.
+
+---
+
+## Notas de compliance y seguridad
+
+- `email` y `password` solo existen como parámetros de `getBeatStarsTokensViaPlaywright`.
+  Una vez devuelto el resultado, JS los libera para GC. No se pasan a ninguna otra función.
+- No se añaden a logs (`console.log`, `console.error`, etc.) en ningún punto del flujo.
+- La transmisión del endpoint al servidor está protegida por HTTPS.
+- Solo se persiste en BD lo que BeatStars envía en la petición de refresh token:
+  `refresh_token`, `client_id`, `client_secret`. Son credenciales de la app OAuth,
+  no las credenciales del usuario (email/password).
+- Si Playwright falla antes de completar, no se crea ningún registro en BD.

@@ -10,7 +10,6 @@ import { PLATFORMS } from '../constants';
 
 export const google_router = express.Router();
 
-// Ruta GET /google
 google_router.get('/connect', async (req, res) => {
   const user = await get_current_user(req)
   const id_profile = req.query.id_profile as string | undefined
@@ -21,19 +20,25 @@ google_router.get('/connect', async (req, res) => {
 
   await get_profile(user.id, id_profile)
 
-  const google_client = await get_google_client(id_profile)
+  const client_id = process.env.GOOGLE_CLIENT_ID
+  const client_secret = process.env.GOOGLE_CLIENT_SECRET
 
-  const scopes = [
-    // "https://www.googleapis.com/auth/youtube.upload",
-    'https://www.googleapis.com/auth/youtube',
-  ];
+  if (!client_id || !client_secret) {
+    return api_error500('Google OAuth credentials not configured')
+  }
 
-  const url = google_client.generateAuthUrl({
-    access_type: "offline",
+  const callback_endpoint = process.env.NODE_ENV === 'production'
+    ? `${process.env.PROD_HOSTNAME}/google/auth_callback`
+    : 'https://localhost:3000/google/auth_callback'
+
+  const oauth2Client = new google.auth.OAuth2(client_id, client_secret, callback_endpoint)
+
+  const url = oauth2Client.generateAuthUrl({
+    access_type: 'offline',
     prompt: 'consent',
-    scope: scopes,
+    scope: ['https://www.googleapis.com/auth/youtube'],
     state: JSON.stringify({ userId: user.id, id_profile }),
-  });
+  })
 
   res.json({ url })
 });

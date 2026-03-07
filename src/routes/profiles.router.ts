@@ -5,8 +5,14 @@ import { db } from '../db'
 import { db_profile_to_profile } from '../mappers';
 import { PLATFORMS } from '../constants';
 import bs_genres_data from '../api/bs_genres.json';
+import { randomUUID } from 'crypto'
 
 const VALID_GENRE_KEYS = new Set(bs_genres_data.genres.map((g: { key: string }) => g.key));
+
+// One-time connect tokens — live in memory, TTL 5 min
+const BS_TOKEN_TTL_MS = 5 * 60 * 1000
+type ConnectTokenEntry = { id_profile: string; id_user: number; expires_at: number }
+const bs_connect_tokens = new Map<string, ConnectTokenEntry>()
 
 export const profiles_router = express.Router()
 
@@ -92,10 +98,19 @@ profiles_router.delete('/:id',
     const user = await get_current_user(req)
     const id = req.params.id as string
 
-    // Verify ownership
     await get_profile(user.id, id)
 
+    const connections = await db.profile_connections.findMany({
+      where: { id_profile: id },
+      select: { id_oauth: true },
+    })
+    const oauth_ids = connections.map(c => c.id_oauth)
+
     await db.profiles.delete({ where: { id } })
+
+    if (oauth_ids.length > 0) {
+      await db.oauth.deleteMany({ where: { id: { in: oauth_ids } } })
+    }
 
     res.json({ success: true })
   })
@@ -273,3 +288,79 @@ profiles_router.delete('/:id/connections/:platform',
     res.json({ success: true })
   })
 )
+
+// POST /api/profiles/:id/connections/beatstars/token/init — Generate a one-time connect token (requires session)
+profiles_router.post('/:id/connections/beatstars/token/init',
+  asyncHandler(async (req, res) => {
+    const user = await get_current_user(req)
+    const id_profile = req.params.id as string
+
+    await get_profile(user.id, id_profile)
+
+    const token = randomUUID()
+    bs_connect_tokens.set(token, {
+      id_profile,
+      id_user: user.id,
+      expires_at: Date.now() + BS_TOKEN_TTL_MS,
+    })
+
+    res.json({ token })
+  })
+)
+
+// POST /api/profiles/:id/connections/beatstars/token — Public endpoint, validated by one-time connect token
+export const bs_connect_token_handler = asyncHandler(async (req, res) => {
+  const id_profile = req.params.id as string
+  const refresh_token: string | null = req.body.refresh_token ?? null
+  const connect_token: string | null = req.body.connect_token ?? null
+
+  if (typeof refresh_token !== 'string' || refresh_token.length === 0) {
+    return api_error400('refresh_token is required')
+  }
+  if (typeof connect_token !== 'string' || connect_token.length === 0) {
+    return api_error400('connect_token is required')
+  }
+
+  const entry = bs_connect_tokens.get(connect_token)
+  if (!entry) return api_error400('Invalid or expired connect_token')
+  if (Date.now() > entry.expires_at) {
+    bs_connect_tokens.delete(connect_token)
+    return api_error400('Invalid or expired connect_token')
+  }
+  if (entry.id_profile !== id_profile) return api_error400('Invalid or expired connect_token')
+
+  // Consume token immediately — one use only
+  bs_connect_tokens.delete(connect_token)
+
+  const existing = await db.profile_connections.findUnique({
+    where: { id_profile_platform: { id_profile, platform: PLATFORMS.BEATSTARS } }
+  })
+  if (existing) {
+    return api_error400('Profile already has a BEATSTARS connection')
+  }
+
+  const oauth = await db.oauth.create({
+    data: {
+      id_user: entry.id_user,
+      connection_type: PLATFORMS.BEATSTARS,
+      access_token: null,
+      refresh_token,
+      client_id: '5615656127.beatstars.com',
+      client_secret: '2a$16$b376aMFTHFXoI1XXa$5xXWHjnyZUP61sGr$GKwZjT$ApolQQW',
+    }
+  })
+
+  await db.profile_connections.create({
+    data: {
+      id: generate_id(),
+      id_profile,
+      id_oauth: oauth.id,
+      platform: PLATFORMS.BEATSTARS,
+      meta: {},
+    }
+  })
+
+  res.status(201).json({ ok: true })
+})
+
+profiles_router.post('/:id/connections/beatstars/token', bs_connect_token_handler)
