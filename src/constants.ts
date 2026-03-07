@@ -34,4 +34,4 @@ export enum ComputedTrackStatus {
 
 export const COMPUTED_TRACK_STATUS_VALUES = Object.values(ComputedTrackStatus) as ComputedTrackStatus[]
 
-export const PROD_HOSTNAME = 'https://api.boskofiles.com' as const
+export const PROD_HOSTNAME = process.env.PROD_HOSTNAME ?? 'https://api.boskofiles.com' as const
