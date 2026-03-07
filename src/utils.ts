@@ -4,13 +4,13 @@ import path from 'path'
 import crypto from 'crypto'
 
 import { ErrorRequestHandler, NextFunction, Request, RequestHandler, Response as ExpressResponse } from "express";
-import { api_error403, api_error404, api_error500, ApiError } from "./errors";
-import { BeatStarsLoginResponse, GraphQLResponse } from "./types/bs_types";
+import { api_error403, api_error404, ApiError } from "./errors";
+import { GraphQLResponse } from "./types/bs_types";
 import { db } from './db';
 import { Prisma } from './generated/prisma/client';
-import { PLATFORMS, TRACK_STATUS } from './constants';
+import { TRACK_STATUS } from './constants';
 import { DbProfile, DbTrack } from './types/db_types';
-import { Profile, TrackStatus, UserInfo } from './types/types';
+import { Profile, TrackStatus } from './types/types';
 
 
 export const asyncHandler =
