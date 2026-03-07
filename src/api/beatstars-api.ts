@@ -1,7 +1,9 @@
 import { PLATFORMS } from "../constants";
 import { db } from "../db";
 import { api_error400, api_error500 } from "../errors";
-import { BeatStarsLoginResponse, BeatStarsTrack } from "../types/bs_types";
+import { BeatstarsAudioAsset, BeatstarsImageAsset, BeatStarsLoginResponse, BeatStarsTrack } from "../types/bs_types";
+import { DbAsset } from "../types/db_types";
+import { Profile } from "../types/types";
 import { checkGraphQLErrors } from "../utils"
 
 export async function get_beatstars_token(id_profile: string) {
@@ -72,9 +74,99 @@ export const get_bs_track_by_id = async (
   const check_track_graphql_errors = checkGraphQLErrors(check_track_body)
 
   if (check_track_graphql_errors.hasErrors) {
-    console.log({errors: check_track_graphql_errors.messages.join(' - ')})
     return null
   }
 
   return check_track_body.data.member.inventory.track
+}
+
+export const get_bs_image_by_id = async (
+  id_profile: Profile['id'],
+  bs_id_asset: DbAsset['beatstars_id']
+) => {
+
+  const token = await get_beatstars_token(id_profile)
+
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json"
+  }
+
+
+
+  const asset_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=ThumbnailAssetById", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      "operationName": "ImageAssetById",
+      "variables": {
+        "assetId": bs_id_asset,
+      },
+      "query": "query ImageAssetById($assetId: String!) {\n  member {\n    assets {\n      image(assetId: $assetId) {\n        id\n        file {\n          assetId\n          name\n          signedUrl\n          __typename\n        }\n        fileExtension\n        fileType\n        signedUrl\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n}"
+    }),
+    redirect: "follow"
+  })
+
+  const asset_image_body: {
+    data: {
+      member: {
+        assets: {
+          image: BeatstarsImageAsset;
+        }
+      }
+    }
+  } = await asset_response.json()
+  const check_track_graphql_errors = checkGraphQLErrors(asset_image_body)
+
+  if (check_track_graphql_errors.hasErrors) {
+    console.log({ errors: check_track_graphql_errors.messages.join(' - ') })
+    return null
+  }
+
+  return asset_image_body.data.member.assets.image
+}
+
+
+export const get_bs_audio_by_id = async (
+  id_profile: Profile['id'],
+  bs_id_asset: DbAsset['beatstars_id']
+) => {
+
+  const token = await get_beatstars_token(id_profile)
+
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json"
+  }
+
+  const asset_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=AudioAssetById", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      "operationName": "AudioAssetById",
+      "variables": {
+        "assetId": bs_id_asset,
+      },
+      "query": "query AudioAssetById($assetId: String!) {\n  member {\n    assets {\n      audio(assetId: $assetId) {\n        id\n        file {\n          assetId\n          name\n          signedUrl\n          __typename\n        }\n        fileExtension\n        fileType\n        signedUrl\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n}"
+    }),
+    redirect: "follow"
+  })
+
+  const asset_audio_body: {
+    data: {
+      member: {
+        assets: {
+          audio: BeatstarsAudioAsset;
+        }
+      }
+    }
+  } = await asset_response.json()
+  const check_track_graphql_errors = checkGraphQLErrors(asset_audio_body)
+
+  if (check_track_graphql_errors.hasErrors) {
+    console.log({ errors: check_track_graphql_errors.messages.join(' - ') })
+    return null
+  }
+
+  return asset_audio_body.data.member.assets.audio
 }

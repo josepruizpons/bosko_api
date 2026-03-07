@@ -1,5 +1,5 @@
 import express from 'express'
-import { asyncHandler, beatstarsSlug, checkGraphQLErrors, extra_data_from_response, get_current_user, sleep } from "../utils";
+import { asyncHandler, beatstarsRequest, beatstarsSlug, checkGraphQLErrors, extra_data_from_response, get_current_user, sleep } from "../utils";
 import { BeatStarsTrack } from "../types/bs_types";
 import { api_error400, api_error403, api_error404, api_error500 } from '../errors';
 import { downloadFileFromS3 } from "../aws";
@@ -45,7 +45,7 @@ bs_router.post(
        1) CREATE ASSET FILE (GraphQL)
     -------------------------------------------------- */
 
-    const createAssetResponse = await fetch(
+    const createAssetResponse = await beatstarsRequest(
       "https://core.prod.beatstars.net/studio/graphql?op=createAssetFile",
       {
         method: "POST",
@@ -103,7 +103,7 @@ bs_router.post(
     });
 
     // Get BeatStars S3 params
-    const s3ParamsRes = await fetch(
+    const s3ParamsRes = await beatstarsRequest(
       `https://uppy-v4.beatstars.net/s3/params?${params.toString()}`
     );
 
@@ -123,7 +123,7 @@ bs_router.post(
     form.append("file", blob, fields["x-amz-meta-name"]);
 
     // Upload to BeatStars
-    const beatstarsUploadRes = await fetch(url, { method: "POST", body: form });
+    const beatstarsUploadRes = await beatstarsRequest(url, { method: "POST", body: form });
 
     // Check BeatStars upload result
     const text = await beatstarsUploadRes.text();
@@ -236,7 +236,7 @@ bs_router.post('/publish',
       }
 
 
-      const add_track_response = await fetch(
+      const add_track_response = await beatstarsRequest(
         "https://core.prod.beatstars.net/studio/graphql?op=AddTrack",
         {
           method: "POST",
@@ -269,7 +269,7 @@ bs_router.post('/publish',
       if (thumbnnail.beatstars_id === null) {
         return api_error400('Invalid thumbnnail: not uploaded')
       }
-      const attach_audio_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=attachMainAudio", {
+      const attach_audio_response = await beatstarsRequest("https://core.prod.beatstars.net/studio/graphql?op=attachMainAudio", {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -286,7 +286,7 @@ bs_router.post('/publish',
         api_error500((await extra_data_from_response(attach_audio_response)))
       }
 
-      const attach_thumbnail_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=trackFormAttachArtwork", {
+      const attach_thumbnail_response = await beatstarsRequest("https://core.prod.beatstars.net/studio/graphql?op=trackFormAttachArtwork", {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -344,7 +344,7 @@ bs_router.post('/publish',
       let has_bundle = false
       for (let retries = 1; retries > 0 && !has_bundle; retries--) {
         await sleep(5000)
-        const check_track_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=GetTrack", {
+        const check_track_response = await beatstarsRequest("https://core.prod.beatstars.net/studio/graphql?op=GetTrack", {
           method: "POST",
           headers,
           body: JSON.stringify({
@@ -384,7 +384,7 @@ bs_router.post('/publish',
         has_bundle = bundle !== null && bundle.progress === 'COMPLETE'
       }
 
-      const publish_track_response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=PublishTrackForm", {
+      const publish_track_response = await beatstarsRequest("https://core.prod.beatstars.net/studio/graphql?op=PublishTrackForm", {
         method: "POST",
         headers,
         body: raw,

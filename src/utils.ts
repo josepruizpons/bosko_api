@@ -131,6 +131,32 @@ export async function generate_video(audioBuffer: Buffer, imageBuffer: Buffer): 
 }
 export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+export const randomSleep = (min = 500, max = 2500) =>
+  sleep(Math.floor(Math.random() * (max - min + 1)) + min)
+
+export async function beatstarsRequest(
+  url: string,
+  options?: RequestInit,
+  retries = 1
+): Promise<Response> {
+  await randomSleep()
+  const response = await fetch(url, options)
+
+  let hasGraphQLErrors = false
+  try {
+    const body = await response.clone().json()
+    hasGraphQLErrors = checkGraphQLErrors(body).hasErrors
+  } catch { /* body no es JSON, ignorar */ }
+
+  const shouldRetry = response.status >= 500 || hasGraphQLErrors
+
+  if (shouldRetry && retries > 0) {
+    return beatstarsRequest(url, options, retries - 1)
+  }
+
+  return response
+}
+
 
 
 export function beatstarsSlug(input: string): string {

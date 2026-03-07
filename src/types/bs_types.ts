@@ -106,3 +106,17 @@ export type GraphQLResponse = {
   }>;
 };
 
+
+export type BeatstarsImageAsset = {
+  id: string;
+  fileType: 'IMAGE',
+  fileExtension: string;
+  signedUrl: string;
+}
+
+export type BeatstarsAudioAsset = {
+  id: string;
+  fileType: 'AUDIO',
+  fileExtension: string;
+  signedUrl: string;
+}

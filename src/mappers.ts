@@ -1,4 +1,4 @@
-import { get_bs_track_by_id } from "./api/beatstars-api";
+import { get_bs_audio_by_id, get_bs_image_by_id } from "./api/beatstars-api";
 import { getSignedFileUrl } from "./aws";
 import { ASSET_TYPE, PLATFORMS } from "./constants";
 import { DbAsset, DbProfile, DbProfileConnection, DbTrack } from "./types/db_types";
@@ -20,49 +20,25 @@ export const db_track_to_track = async (db_track: DbTrack): Promise<Track> => {
     beatstars_id_track: db_track.beatstars_id_track,
   }
 
-  if (db_track.id_profile && db_track.beatstars_id_track && (db_track.beat?.beatstars_id || db_track.thumbnail?.beatstars_id)) {
-    const bs_track = await get_bs_track_by_id(
-      db_track.id_profile,
-      db_track.beatstars_id_track,
-    )
-
-    if (db_track.beat && bs_track?.bundle) {
-      mapped_track.beat = {
-        id: db_track.beat.id,
-        name: db_track.beat.name,
-        type: db_track.beat.type as AssetType,
-        url: bs_track.bundle.stream?.url ?? bs_track.bundle.mainAudioFile.url,
-        s3_uploaded: true,
-        bs_uploaded: db_track.beat.beatstars_id !== null,
-      }
-
-    }
-
-    if (db_track.thumbnail && bs_track?.artwork) {
-      mapped_track.thumbnail = {
-        id: db_track.thumbnail.id,
-        name: db_track.thumbnail.name,
-        type: db_track.thumbnail.type as AssetType,
-        url: bs_track.artwork.fitInUrl,
-        s3_uploaded: true,
-        bs_uploaded: db_track.thumbnail.beatstars_id !== null,
-      }
-    }
-  }
-  const assets_to_fetch: DbAsset[] = []
-
-  if(mapped_track.beat === null && db_track.beat) assets_to_fetch.push(db_track.beat as DbAsset)
-  if(mapped_track.thumbnail === null && db_track.thumbnail) assets_to_fetch.push(db_track.thumbnail as DbAsset)
-
   await Promise.all(
-    assets_to_fetch.map(
+    [db_track.beat, db_track.thumbnail].map(
       async (asset) => {
-        if (asset === null) return null
+
+        if (asset === null || db_track.id_profile === null) return null
         let url = null
+
         if (!asset.beatstars_id) {
           url = await getSignedFileUrl(asset.s3_key)
-        } else {
-
+        } else if(asset.type === ASSET_TYPE.BEAT) {
+          const bs_beat = await get_bs_audio_by_id(db_track.id_profile, asset.beatstars_id)
+          if(bs_beat !== null){
+            url = bs_beat.signedUrl
+          }
+         }else if (asset.type === ASSET_TYPE.THUMBNAIL) {
+          const bs_img= await get_bs_image_by_id(db_track.id_profile, asset.beatstars_id)
+          if(bs_img !== null){
+            url = bs_img.signedUrl
+          }
         }
 
         let asset_with_url: Asset | null = null

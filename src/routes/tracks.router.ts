@@ -63,7 +63,6 @@ tracks_router.get('/pending',
           { created_at: "asc" }
         ]
       })
-      console.log(JSON.stringify(db_tracks, null, 2))
       const tracks = await Promise.all(
         db_tracks.map(
           async (track) => await db_track_to_track(track)
