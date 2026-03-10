@@ -144,8 +144,7 @@ export async function getSignedFileUrl(
 
   } catch (error) {
     console.log(error)
-    api_error500()
-    return ''
+    return api_error500()
   }
 }
 

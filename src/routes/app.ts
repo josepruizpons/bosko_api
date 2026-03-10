@@ -8,7 +8,7 @@ import { google_router } from "./google.routes";
 import { bs_router } from "./beatstars.routes";
 import { tracks_router } from "./tracks.router";
 import { assets_router } from "./assets.router";
-import { errorHandler, generate_id, get_current_user } from "../utils";
+import { errorHandler, generate_id } from "../utils";
 import { db } from "../db"
 import { auth_router } from "./auth.routes";
 import { user_router } from "./user.routes";

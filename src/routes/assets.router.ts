@@ -1,5 +1,6 @@
 import express from 'express'
 import multer from 'multer';
+import sharp from 'sharp';
 import { asyncHandler, generate_id, get_current_user, get_profile } from "../utils";
 import { api_error400, api_error404 } from '../errors';
 import { uploadFileToS3, streamFileFromS3 } from "../aws";
@@ -77,26 +78,48 @@ assets_router.post('/',
 
     const asset_type = type
     const s3_folder = type === ASSET_TYPE.BEAT ? 'beats' : 'thumbnails';
-    const s3_key = `${s3_folder}/${Date.now()}_${file.originalname}`;
+
+    let uploadPath = file.path;
+    let uploadMimetype = mimetype;
+    let assetName = file.originalname;
+    let convertedPath: string | null = null;
+
+    // Convert image to PNG if it's not already PNG
+    if (type === ASSET_TYPE.THUMBNAIL && mimetype !== 'image/png') {
+      const baseName = assetName.replace(/\.[^.]+$/, '');
+      convertedPath = `/tmp/uploads/${Date.now()}_${baseName}.png`;
+      await sharp(file.path).png().toFile(convertedPath);
+      uploadPath = convertedPath;
+      uploadMimetype = 'image/png';
+      assetName = `${baseName}.png`;
+    }
+
+    const s3_key = `${s3_folder}/${Date.now()}_${assetName}`;
 
     // Upload file from disk using multipart upload
-    const url = await uploadFileToS3(file.path, s3_key, mimetype);
+    const url = await uploadFileToS3(uploadPath, s3_key, uploadMimetype);
 
-    // Clean up temp file
-    try {
-      await unlink(file.path);
-    } catch (err) {
-      console.warn('Failed to delete temp file:', err);
+    // Clean up temp files
+    const filesToDelete = convertedPath
+      ? [file.path, convertedPath]
+      : [file.path];
+
+    for (const filePath of filesToDelete) {
+      try {
+        await unlink(filePath);
+      } catch (err) {
+        console.warn('Failed to delete temp file:', err);
+      }
     }
 
     const id_asset = generate_id();
     const db_asset = await db.asset.create({
       data: {
         id: id_asset,
-        name: file.originalname,
+        name: assetName,
         type: asset_type,
         s3_key: s3_key,
-        mimetype: mimetype,
+        mimetype: uploadMimetype,
         id_user: user.id,
         id_profile,
         beatstars_id: null,
