@@ -185,7 +185,6 @@ bs_router.post('/publish',
 
       const beat_id_asset = track.id_beat
       const thumbnail_id_asset = track.id_thumbnail
-      const track_name = track.name
       const publish_at = track.publish_at
 
       const publish_date = publish_at === null ? null : new Date(publish_at)
@@ -229,6 +228,9 @@ bs_router.post('/publish',
       const meta_tags: string[] = bs_meta.tags ?? ["dancehall", "afrobeat", "tyla"]
       const meta_genres: string[] = bs_meta.genres ?? ["AFRO", "AFROBEAT", "AFROPOP"]
       const meta_bpm: string = bs_meta.bpm ?? "220"
+      const bs_prefix: string = (bs_meta.name_prefix ?? '').trim()
+      const bs_suffix: string = (bs_meta.name_suffix ?? '').trim()
+      const track_name = [bs_prefix, track.name, bs_suffix].filter(Boolean).join(' ')
 
       const headers = {
         Authorization: `Bearer ${token}`,

@@ -88,6 +88,9 @@ If you want to make profit with your music (upload your song to streaming servic
       const video_description: string = yt_meta.description
         ? yt_meta.description.replace('{bs_url}', track.beatstars_url ?? '')
         : default_description
+      const yt_prefix: string = (yt_meta.name_prefix ?? '').trim()
+      const yt_suffix: string = (yt_meta.name_suffix ?? '').trim()
+      const track_title = [yt_prefix, track.name, yt_suffix].filter(Boolean).join(' ').slice(0, 100)
 
       // Idempotent: if already uploaded, return existing URL
       if (track.yt_url) {
@@ -137,7 +140,7 @@ If you want to make profit with your music (upload your song to streaming servic
         videoS3Key = await invokeVideoLambda(
           beatAsset.s3_key,
           thumbnailAsset.s3_key,
-          track.name
+          track_title
         );
 
         console.log('Lambda returned S3 key:', videoS3Key);
@@ -145,7 +148,7 @@ If you want to make profit with your music (upload your song to streaming servic
         // Download video from S3 using SDK
         videoBuffer = await downloadFileFromS3(videoS3Key);
 
-        console.log('Video downloaded from S3: ' + track.name);
+        console.log('Video downloaded from S3: ' + track_title);
       } else {
         // Development: Download from S3 and generate video locally
         console.log('Development: Downloading assets from S3 for local video generation');
@@ -154,7 +157,7 @@ If you want to make profit with your music (upload your song to streaming servic
         const thumbBuffer = await downloadFileFromS3(thumbnailAsset.s3_key);
 
         videoBuffer = await generate_video(audioBuffer, thumbBuffer)
-        console.log('Video generated locally: ' + track.name)
+        console.log('Video generated locally: ' + track_title)
       }
 
       // Subir a YouTube
@@ -164,7 +167,7 @@ If you want to make profit with your music (upload your song to streaming servic
         part: ['snippet', 'status'],
         requestBody: {
           snippet: {
-            title: track.name,
+            title: track_title,
             description: video_description
           },
           status: {
