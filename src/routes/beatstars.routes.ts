@@ -1,4 +1,5 @@
 import express from 'express'
+import sharp from 'sharp';
 import { asyncHandler, beatstarsRequest, beatstarsSlug, checkGraphQLErrors, extra_data_from_response, get_current_user, sleep } from "../utils";
 import { BeatStarsTrack } from "../types/bs_types";
 import { api_error400, api_error403, api_error404, api_error500 } from '../errors';
@@ -7,7 +8,7 @@ import { downloadFileFromS3 } from "../aws";
 import { db, track_include } from '../db'
 import { db_asset_to_asset, db_track_to_track } from '../mappers';
 import { get_beatstars_token } from '../api/beatstars-api';
-import { PLATFORMS } from '../constants';
+import { ASSET_TYPE, PLATFORMS } from '../constants';
 
 export const bs_router = express.Router()
 
@@ -40,6 +41,23 @@ bs_router.post(
     const beatstars_slug = beatstarsSlug(db_asset.name)
 
     const file = await downloadFileFromS3(db_asset.s3_key)
+
+    // Recortar thumbnail a 1:1 centrado sin escalar
+    let uploadBuffer: Buffer = file;
+    if (db_asset.type === ASSET_TYPE.THUMBNAIL) {
+      const image = sharp(file);
+      const { width, height } = await image.metadata();
+      if (!width || !height) {
+        return api_error400('Unable to read image dimensions');
+      }
+      const size = Math.min(width, height);
+      const left = Math.floor((width - size) / 2);
+      const top = Math.floor((height - size) / 2);
+      uploadBuffer = await image
+        .extract({ left, top, width: size, height: size })
+        .png()
+        .toBuffer();
+    }
 
     /* --------------------------------------------------
        1) CREATE ASSET FILE (GraphQL)
@@ -98,7 +116,6 @@ bs_router.post(
       "metadata[type]": bs_asset.file.type,
       "metadata[content-type]": db_asset.mimetype ?? 'image/png', // TODO: make mandatory field in db
       "metadata[version]": "2",
-      // "metadata[user]": process.env.BS_USER_ID ?? "",
       "metadata[env]": "prod"
     });
 
@@ -119,7 +136,7 @@ bs_router.post(
     Object.entries(fields).forEach(([key, value]) => {
       form.append(key, value as string);
     });
-    const blob = new Blob([file.buffer as unknown as BlobPart], { type: db_asset.mimetype ?? 'image/png' });
+    const blob = new Blob([uploadBuffer as unknown as BlobPart], { type: db_asset.mimetype ?? 'image/png' });
     form.append("file", blob, fields["x-amz-meta-name"]);
 
     // Upload to BeatStars

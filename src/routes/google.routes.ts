@@ -1,7 +1,9 @@
 import express from 'express'
 import { google } from 'googleapis';
+import type { GaxiosResponseWithHTTP2 } from 'googleapis-common';
+import type { youtube_v3 } from 'googleapis';
 import { api_error400, api_error500 } from '../errors';
-import { buffer_to_stream, generate_video, get_current_user, get_profile, youtubeUrl } from '../utils';
+import { asyncHandler, buffer_to_stream, generate_video, get_current_user, get_profile, youtubeUrl } from '../utils';
 import { get_google_client } from '../google_auth';
 import { db, track_include } from '../db'
 import { deleteFileFromS3, downloadFileFromS3, invokeVideoLambda } from '../aws';
@@ -226,4 +228,107 @@ If you want to make profit with your music (upload your song to streaming servic
       res.status(500).json({ success: false, error: err })
     }
   }
+)
+
+// GET /api/google/last-scheduled?id_profile=<id>
+google_router.get('/last-scheduled',
+  asyncHandler(async (req, res) => {
+    const user = await get_current_user(req)
+    const id_profile = req.query.id_profile as string | undefined
+
+    if (!id_profile) return api_error400('Missing required query param: id_profile')
+
+    const profile = await get_profile(user.id, id_profile)
+    const google_client = await get_google_client(id_profile)
+    const youtube = google.youtube({ version: 'v3', auth: google_client })
+
+    // Paso 1: obtener uploadsPlaylistId del canal
+    const channelRes = await youtube.channels.list({
+      part: ['contentDetails'],
+      mine: true,
+    })
+    const uploadsPlaylistId =
+      channelRes.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads
+    if (!uploadsPlaylistId) {
+      return res.json({ id_profile, profile_name: profile.name, last_scheduled: null })
+    }
+
+    // Paso 2: recopilar video IDs de la playlist de uploads (hasta 200)
+    const videoIds: string[] = []
+    let nextPageToken: string | undefined = undefined
+    let hasMore = true
+    while (hasMore && videoIds.length < 200) {
+      const playlistRes: GaxiosResponseWithHTTP2<youtube_v3.Schema$PlaylistItemListResponse> =
+        await youtube.playlistItems.list({
+        part: ['snippet'],
+        playlistId: uploadsPlaylistId,
+        maxResults: 50,
+        pageToken: nextPageToken,
+      })
+      for (const item of playlistRes.data.items ?? []) {
+        const vid = item.snippet?.resourceId?.videoId
+        if (vid) videoIds.push(vid)
+      }
+      nextPageToken = playlistRes.data.nextPageToken ?? undefined
+      hasMore = !!nextPageToken
+    }
+
+    if (videoIds.length === 0) {
+      return res.json({ id_profile, profile_name: profile.name, last_scheduled: null })
+    }
+
+    // Paso 3: obtener status + snippet en batches de 50
+    const toUtcDateString = (d: Date) => d.toISOString().slice(0, 10) // "YYYY-MM-DD"
+    const coveredDays = new Set<string>()
+    const allDates: Date[] = []
+
+    for (let i = 0; i < videoIds.length; i += 50) {
+      const batch = videoIds.slice(i, i + 50)
+      const videosRes = await youtube.videos.list({
+        part: ['status', 'snippet'],
+        id: batch,
+      })
+      for (const video of videosRes.data.items ?? []) {
+        const { privacyStatus, publishAt } = video.status ?? {}
+        const publishedAt = video.snippet?.publishedAt
+        let date: Date | null = null
+        if (privacyStatus === 'private' && publishAt) {
+          date = new Date(publishAt)
+        } else if (privacyStatus === 'public' && publishedAt) {
+          date = new Date(publishedAt)
+        }
+        if (date) {
+          coveredDays.add(toUtcDateString(date))
+          allDates.push(date)
+        }
+      }
+    }
+
+    // Algoritmo: cadena consecutiva desde hoy (UTC)
+    const today = new Date()
+    today.setUTCHours(0, 0, 0, 0)
+
+    let lastConsecutive: Date | null = null
+    let current = new Date(today)
+    while (true) {
+      const next = new Date(current)
+      next.setUTCDate(next.getUTCDate() + 1)
+      if (coveredDays.has(toUtcDateString(next))) {
+        lastConsecutive = next
+        current = next
+      } else {
+        break
+      }
+    }
+
+    // Fallback: si no hay cadena, devolver el último video existente
+    const lastScheduled = lastConsecutive
+      ?? (allDates.length > 0 ? new Date(Math.max(...allDates.map(d => d.getTime()))) : null)
+
+    res.json({
+      id_profile,
+      profile_name: profile.name,
+      last_scheduled: lastScheduled?.toISOString() ?? null,
+    })
+  })
 )
