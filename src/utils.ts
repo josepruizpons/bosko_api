@@ -222,6 +222,13 @@ export function youtubeUrl(videoId: string) {
   return `https://www.youtube.com/watch?v=${videoId}`;
 }
 
+export function is_youtube_quota_error(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  const gaxios = err as { response?: { data?: { error?: { errors?: { reason: string }[] } } } }
+  const reasons = gaxios.response?.data?.error?.errors?.map((e: { reason: string }) => e.reason) ?? []
+  return reasons.some(r => r === 'quotaExceeded' || r === 'uploadLimitExceeded')
+}
+
 export function compute_track_status(db_track: DbTrack): TrackStatus {
 
   if (db_track.yt_url !== null) return TRACK_STATUS.YT_PUBLISHED

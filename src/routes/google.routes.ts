@@ -3,7 +3,7 @@ import { google } from 'googleapis';
 import type { GaxiosResponseWithHTTP2 } from 'googleapis-common';
 import type { youtube_v3 } from 'googleapis';
 import { api_error400, api_error500 } from '../errors';
-import { asyncHandler, buffer_to_stream, generate_video, get_current_user, get_profile, youtubeUrl } from '../utils';
+import { asyncHandler, buffer_to_stream, generate_video, get_current_user, get_profile, is_youtube_quota_error, youtubeUrl } from '../utils';
 import { get_google_client } from '../google_auth';
 import { db, track_include } from '../db'
 import { deleteFileFromS3, downloadFileFromS3, invokeVideoLambda } from '../aws';
@@ -225,7 +225,13 @@ If you want to make profit with your music (upload your song to streaming servic
       res.json(updated_track)
     } catch (err) {
       console.error(err)
-      res.status(500).json({ success: false, error: err })
+      if (is_youtube_quota_error(err)) {
+        return res.status(429).json({
+          error: 'YOUTUBE_QUOTA_EXCEEDED',
+          message: 'YouTube daily upload limit reached. Try again tomorrow.',
+        })
+      }
+      res.status(500).json({ success: false, error: String(err) })
     }
   }
 )
@@ -304,31 +310,50 @@ google_router.get('/last-scheduled',
       }
     }
 
-    // Algoritmo: cadena consecutiva desde hoy (UTC)
+    // Sin vídeos con fecha útil → null
+    if (allDates.length === 0) {
+      return res.json({ id_profile, profile_name: profile.name, last_scheduled: null })
+    }
+
+    // Leer intervalo del perfil (mínimo 1)
+    const interval = Math.max(1, parseInt((profile.settings as Record<string, string>)?.publish_interval_days ?? '1') || 1)
+
+    // Fecha base: el último vídeo existente
+    const lastDate = new Date(Math.max(...allDates.map(d => d.getTime())))
+    lastDate.setUTCHours(0, 0, 0, 0)
+
     const today = new Date()
     today.setUTCHours(0, 0, 0, 0)
 
+    // Recorrer slots (lastDate + N, + 2N, ...) mientras estén cubiertos
     let lastConsecutive: Date | null = null
-    let current = new Date(today)
+    let slotBase = new Date(lastDate)
+
     while (true) {
-      const next = new Date(current)
-      next.setUTCDate(next.getUTCDate() + 1)
-      if (coveredDays.has(toUtcDateString(next))) {
-        lastConsecutive = next
-        current = next
+      const nextSlot = new Date(slotBase)
+      nextSlot.setUTCDate(nextSlot.getUTCDate() + interval)
+
+      // Ignorar slots que ya han pasado (anteriores o iguales a hoy)
+      if (nextSlot <= today) {
+        slotBase = nextSlot
+        continue
+      }
+
+      if (coveredDays.has(toUtcDateString(nextSlot))) {
+        lastConsecutive = nextSlot
+        slotBase = nextSlot
       } else {
         break
       }
     }
 
-    // Fallback: si no hay cadena, devolver el último video existente
-    const lastScheduled = lastConsecutive
-      ?? (allDates.length > 0 ? new Date(Math.max(...allDates.map(d => d.getTime()))) : null)
+    // Fallback: si no hay cadena desde el primer slot futuro, devolver el último vídeo existente
+    const lastScheduled = lastConsecutive ?? lastDate
 
     res.json({
       id_profile,
       profile_name: profile.name,
-      last_scheduled: lastScheduled?.toISOString() ?? null,
+      last_scheduled: lastScheduled.toISOString(),
     })
   })
 )
