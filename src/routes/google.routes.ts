@@ -245,6 +245,20 @@ google_router.get('/last-scheduled',
     if (!id_profile) return api_error400('Missing required query param: id_profile')
 
     const profile = await get_profile(user.id, id_profile)
+
+    // Leer intervalo del perfil (mínimo 1) — necesario en todos los casos
+    const interval = Math.max(1, parseInt((profile.settings as Record<string, string>)?.publish_interval_days ?? '1') || 1)
+
+    const today = new Date()
+    today.setUTCHours(0, 0, 0, 0)
+
+    // Helper: next_expected cuando no hay last_scheduled → hoy + interval
+    const next_from_today = () => {
+      const d = new Date(today)
+      d.setUTCDate(d.getUTCDate() + interval)
+      return d
+    }
+
     const google_client = await get_google_client(id_profile)
     const youtube = google.youtube({ version: 'v3', auth: google_client })
 
@@ -256,7 +270,7 @@ google_router.get('/last-scheduled',
     const uploadsPlaylistId =
       channelRes.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads
     if (!uploadsPlaylistId) {
-      return res.json({ id_profile, profile_name: profile.name, last_scheduled: null })
+      return res.json({ id_profile, profile_name: profile.name, last_scheduled: null, next_expected: next_from_today().toISOString() })
     }
 
     // Paso 2: recopilar video IDs de la playlist de uploads (hasta 200)
@@ -280,7 +294,7 @@ google_router.get('/last-scheduled',
     }
 
     if (videoIds.length === 0) {
-      return res.json({ id_profile, profile_name: profile.name, last_scheduled: null })
+      return res.json({ id_profile, profile_name: profile.name, last_scheduled: null, next_expected: next_from_today().toISOString() })
     }
 
     // Paso 3: obtener status + snippet en batches de 50
@@ -312,18 +326,12 @@ google_router.get('/last-scheduled',
 
     // Sin vídeos con fecha útil → null
     if (allDates.length === 0) {
-      return res.json({ id_profile, profile_name: profile.name, last_scheduled: null })
+      return res.json({ id_profile, profile_name: profile.name, last_scheduled: null, next_expected: next_from_today().toISOString() })
     }
-
-    // Leer intervalo del perfil (mínimo 1)
-    const interval = Math.max(1, parseInt((profile.settings as Record<string, string>)?.publish_interval_days ?? '1') || 1)
 
     // Fecha base: el último vídeo existente
     const lastDate = new Date(Math.max(...allDates.map(d => d.getTime())))
     lastDate.setUTCHours(0, 0, 0, 0)
-
-    const today = new Date()
-    today.setUTCHours(0, 0, 0, 0)
 
     // Recorrer slots (lastDate + N, + 2N, ...) mientras estén cubiertos
     let lastConsecutive: Date | null = null
@@ -350,10 +358,15 @@ google_router.get('/last-scheduled',
     // Fallback: si no hay cadena desde el primer slot futuro, devolver el último vídeo existente
     const lastScheduled = lastConsecutive ?? lastDate
 
+    // next_expected: el siguiente slot vacío tras last_scheduled
+    const nextExpected = new Date(lastScheduled)
+    nextExpected.setUTCDate(nextExpected.getUTCDate() + interval)
+
     res.json({
       id_profile,
       profile_name: profile.name,
       last_scheduled: lastScheduled.toISOString(),
+      next_expected: nextExpected.toISOString(),
     })
   })
 )
