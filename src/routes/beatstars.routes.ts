@@ -244,14 +244,17 @@ bs_router.post('/publish',
       const bs_meta = (bs_connection?.meta ?? {}) as Record<string, any>
       const meta_tags: string[] = bs_meta.tags ?? ["dancehall", "afrobeat", "tyla"]
       const meta_genres: string[] = bs_meta.genres ?? ["AFRO", "AFROBEAT", "AFROPOP"]
-      const meta_bpm: string = bs_meta.bpm ?? "220"
+      const meta_bpm: number = Number(bs_meta.bpm ?? 220)
       const bs_prefix: string = (bs_meta.name_prefix ?? '').trim()
       const bs_suffix: string = (bs_meta.name_suffix ?? '').trim()
       const track_name = [bs_prefix, track.name, bs_suffix].filter(Boolean).join(' ')
 
       const headers = {
         Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "App": "WEB_STUDIO",
+        "Version": "3.14.0",
+        "Uuid": crypto.randomUUID()
       }
 
 
@@ -333,7 +336,6 @@ bs_router.post('/publish',
               "genres": meta_genres,
               "bpmDouble": meta_bpm,
               "instruments": [],
-              "keyNote": "NONE",
               "moods": []
             },
             "releaseDate": publish_date?.toISOString() ?? (new Date()).toISOString(),
@@ -345,6 +347,7 @@ bs_router.post('/publish',
               "enabled": false,
               "fileType": "TAGGED_MP3",
               "mode": "EMAIL_CAPTURE",
+              "allowCommercialUse": false,
               "socialPlatforms": {
                 "beatStars": false,
                 "soundCloud": false,
@@ -361,7 +364,7 @@ bs_router.post('/publish',
       //NOTE: Check if audio is attached successfully -> bundle != null
 
       let has_bundle = false
-      for (let retries = 1; retries > 0 && !has_bundle; retries--) {
+      for (let retries = 10; retries > 0 && !has_bundle; retries--) {
         await sleep(5000)
         const check_track_response = await beatstarsRequest("https://core.prod.beatstars.net/studio/graphql?op=GetTrack", {
           method: "POST",
@@ -400,9 +403,14 @@ bs_router.post('/publish',
           api_error500('File audio error')
         }
 
-        has_bundle = bundle !== null && bundle.progress === 'COMPLETE'
+        has_bundle = bundle !== null
       }
 
+      if (!has_bundle) {
+        return api_error500('Audio not attached after maximum retries')
+      }
+
+      console.log('[BS publish] request body:', raw)
       const publish_track_response = await beatstarsRequest("https://core.prod.beatstars.net/studio/graphql?op=PublishTrackForm", {
         method: "POST",
         headers,

@@ -333,10 +333,17 @@ export const bs_connect_token_handler = asyncHandler(async (req, res) => {
   bs_connect_tokens.delete(connect_token)
 
   const existing = await db.profile_connections.findUnique({
-    where: { id_profile_platform: { id_profile, platform: PLATFORMS.BEATSTARS } }
+    where: { id_profile_platform: { id_profile, platform: PLATFORMS.BEATSTARS } },
+    include: { oauth: true }
   })
+
   if (existing) {
-    return api_error400('Profile already has a BEATSTARS connection')
+    // Reconnect: update the stored refresh_token
+    await db.oauth.update({
+      where: { id: existing.id_oauth },
+      data: { refresh_token }
+    })
+    return res.json({ ok: true, reconnected: true })
   }
 
   const oauth = await db.oauth.create({

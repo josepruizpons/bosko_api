@@ -29,9 +29,14 @@ export async function get_beatstars_token(id_profile: string) {
     body: urlencoded,
   })
 
-  if (response.status !== 200) api_error500()
+  if (response.status !== 200) return api_error500('BeatStars token refresh failed — reconnect your BeatStars account')
 
   const payload: BeatStarsLoginResponse = await response.json()
+
+  // Auto-rotate: BeatStars issues a new refresh_token on each exchange; persist it
+  if (payload.refresh_token && payload.refresh_token !== bs_oauth.refresh_token) {
+    await db.oauth.update({ where: { id: bs_oauth.id }, data: { refresh_token: payload.refresh_token } })
+  }
 
   return payload.access_token
 }

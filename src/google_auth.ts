@@ -1,6 +1,5 @@
 import { google } from 'googleapis'
 import { db } from './db'
-import { api_error400 } from './errors'
 import { PLATFORMS, PROD_HOSTNAME } from './constants'
 
 
@@ -21,7 +20,7 @@ export const get_google_client = async (
     console.log({
       message: `${PLATFORMS.YOUTUBE} connection not found for profile ${id_profile}`
     })
-    return api_error400(`Profile has no YouTube connection`)
+    return null
   }
 
   const oauth = connection.oauth

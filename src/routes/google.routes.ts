@@ -73,6 +73,9 @@ google_router.post(
       }
 
       const google_client = await get_google_client(track.id_profile)
+      if (!google_client) {
+        return api_error400('Profile has no YouTube connection')
+      }
 
       // Read description from profile's YouTube connection meta (with hardcoded fallback)
       const yt_connection = await db.profile_connections.findFirst({
@@ -260,6 +263,9 @@ google_router.get('/last-scheduled',
     }
 
     const google_client = await get_google_client(id_profile)
+    if (!google_client) {
+      return res.json({ id_profile, profile_name: profile.name, last_scheduled: null, next_expected: next_from_today().toISOString() })
+    }
     const youtube = google.youtube({ version: 'v3', auth: google_client })
 
     // Paso 1: obtener uploadsPlaylistId del canal
