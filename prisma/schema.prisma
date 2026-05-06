@@ -77,8 +77,6 @@ model track {
   id_profile         String?   @db.Char(11)
   bpm                String?   @db.VarChar
   musical_key        String?   @db.VarChar
-  tags               String[]
-  genres             String[]
   beat               asset?    @relation("track_beat", fields: [id_beat], references: [id], onDelete: Cascade, map: "beat_fk")
   thumbnail          asset?    @relation("track_thumbnail", fields: [id_thumbnail], references: [id], onDelete: Cascade, map: "thumnbnail_fk")
   profiles           profiles? @relation(fields: [id_profile], references: [id], onDelete: Cascade, map: "track_profiles_fk")
