@@ -1,6 +1,6 @@
 import { Prisma } from "../generated/prisma/client"
 
-export type DbTrack = Prisma.trackGetPayload<{
+type DbTrackBase = Prisma.trackGetPayload<{
   include: {
     beat: {
       select: {
@@ -22,6 +22,14 @@ export type DbTrack = Prisma.trackGetPayload<{
     }
   }
 }>
+
+// bpm, musical_key, tags y genres se añaden a la DB pero el cliente generado aún no los refleja
+export type DbTrack = DbTrackBase & {
+  bpm?: string | null;
+  musical_key?: string | null;
+  tags?: string[] | null;
+  genres?: string[] | null;
+}
 
 export type DbProfileConnection = Prisma.profile_connectionsGetPayload<{}>
 export type DbProfile = Prisma.profilesGetPayload<{

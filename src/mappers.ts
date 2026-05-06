@@ -18,6 +18,10 @@ export const db_track_to_track = async (db_track: DbTrack): Promise<Track> => {
     beat: null,
     thumbnail: null,
     beatstars_id_track: db_track.beatstars_id_track,
+    bpm: db_track.bpm ?? null,
+    musical_key: db_track.musical_key ?? null,
+    tags: db_track.tags ?? [],
+    genres: db_track.genres ?? [],
   }
 
   await Promise.all(

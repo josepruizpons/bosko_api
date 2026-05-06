@@ -5,6 +5,9 @@ import { db, track_include } from '../db'
 import { DbTrack } from '../types/db_types';
 import { db_track_to_track } from '../mappers';
 import { deleteFileFromS3 } from '../aws';
+import bs_key_notes_data from '../api/bs_key_notes.json';
+
+const VALID_KEY_NOTE_KEYS = new Set(bs_key_notes_data.keyNotes.map((k: { key: string }) => k.key));
 
 export const tracks_router = express.Router()
 
@@ -62,6 +65,8 @@ tracks_router.post('/',
         ? new Date(req.body.publish_at)
         : null
       const yt_url: string | null = req.body.yt_url ?? null
+      const bpm: string | null = req.body.bpm ?? null
+      const musical_key: string | null = req.body.musical_key ?? null
 
       if (typeof name !== 'string') {
         return api_error400('Missing required field: name')
@@ -105,6 +110,10 @@ tracks_router.post('/',
         return api_error400('Invalid publish_at date')
       }
 
+      if (musical_key !== null && !VALID_KEY_NOTE_KEYS.has(musical_key)) {
+        return api_error400(`Invalid musical_key. Valid values: ${[...VALID_KEY_NOTE_KEYS].join(', ')}`)
+      }
+
       const track_id = generate_id()
       const created_track = await db.track.create({
         data: {
@@ -116,7 +125,9 @@ tracks_router.post('/',
           id_thumbnail,
           publish_at: publish_date,
           yt_url: yt_url ?? null,
-        }
+          ...(bpm !== null && { bpm }),
+          ...(musical_key !== null && { musical_key }),
+        } as any
       })
 
       const track = await db_track_to_track({
@@ -194,6 +205,23 @@ tracks_router.patch('/:id',
           return api_error404('Thumbnail not found')
         }
         updateData.id_thumbnail = req.body.id_thumbnail
+      }
+
+      if ('bpm' in req.body) {
+        if (req.body.bpm !== null && typeof req.body.bpm !== 'string') {
+          return api_error400('Invalid bpm')
+        }
+        updateData.bpm = req.body.bpm ?? null
+      }
+
+      if ('musical_key' in req.body) {
+        if (req.body.musical_key !== null && typeof req.body.musical_key !== 'string') {
+          return api_error400('Invalid musical_key')
+        }
+        if (req.body.musical_key !== null && !VALID_KEY_NOTE_KEYS.has(req.body.musical_key)) {
+          return api_error400(`Invalid musical_key. Valid values: ${[...VALID_KEY_NOTE_KEYS].join(', ')}`)
+        }
+        updateData.musical_key = req.body.musical_key ?? null
       }
 
       if (Object.keys(updateData).length === 0) {

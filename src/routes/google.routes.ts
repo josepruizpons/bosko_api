@@ -8,7 +8,7 @@ import { get_google_client } from '../google_auth';
 import { db, track_include } from '../db'
 import { deleteFileFromS3, downloadFileFromS3, invokeVideoLambda } from '../aws';
 import { db_track_to_track } from '../mappers';
-import { PLATFORMS } from '../constants';
+import { PLATFORMS, PROD_HOSTNAME } from '../constants';
 
 export const google_router = express.Router();
 
@@ -30,7 +30,7 @@ google_router.get('/connect', async (req, res) => {
   }
 
   const callback_endpoint = process.env.NODE_ENV === 'production'
-    ? `${process.env.PROD_HOSTNAME}/google/auth_callback`
+    ? `${PROD_HOSTNAME}/google/auth_callback`
     : 'https://localhost:3000/google/auth_callback'
 
   const oauth2Client = new google.auth.OAuth2(client_id, client_secret, callback_endpoint)

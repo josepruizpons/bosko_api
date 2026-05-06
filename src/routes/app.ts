@@ -15,7 +15,7 @@ import { user_router } from "./user.routes";
 import { profiles_router, bs_connect_token_handler } from "./profiles.router";
 import { validate_session } from "../middlewares/session.middleware";
 import { api_error400, api_error500 } from "../errors";
-import { PLATFORMS } from "../constants";
+import { PLATFORMS, PROD_HOSTNAME } from "../constants";
 
 const app = express();
 app.use(cookieParser());
@@ -89,7 +89,7 @@ app.get('/google/auth_callback', async (req, res) => {
   if (!client_id || !client_secret) return api_error500('Google OAuth credentials not configured')
 
   const callback_endpoint = process.env.NODE_ENV === 'production'
-    ? `${process.env.PROD_HOSTNAME}/google/auth_callback`
+    ? `${PROD_HOSTNAME}/google/auth_callback`
     : 'https://localhost:3000/google/auth_callback'
 
   const oauth2Client = new google.auth.OAuth2(client_id, client_secret, callback_endpoint)

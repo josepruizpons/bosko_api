@@ -207,7 +207,13 @@ profiles_router.patch('/:id/connections/:platform',
 
     if ('meta' in req.body) {
       const meta = req.body.meta
-      if (platform === PLATFORMS.BEATSTARS && meta && Array.isArray(meta.genres)) {
+      if (platform === PLATFORMS.BEATSTARS) {
+        if (!meta || !Array.isArray(meta.tags) || meta.tags.length === 0) {
+          return api_error400('tags is required and must be a non-empty array for BeatStars connections')
+        }
+        if (!Array.isArray(meta.genres) || meta.genres.length === 0) {
+          return api_error400('genres is required and must be a non-empty array for BeatStars connections')
+        }
         const invalid = (meta.genres as unknown[]).filter(k => typeof k !== 'string' || !VALID_GENRE_KEYS.has(k))
         if (invalid.length > 0) {
           return api_error400(`Invalid genre keys: ${invalid.join(', ')}`)

@@ -4,11 +4,12 @@ import { asyncHandler, beatstarsRequest, beatstarsSlug, checkGraphQLErrors, extr
 import { BeatStarsTrack } from "../types/bs_types";
 import { api_error400, api_error403, api_error404, api_error500 } from '../errors';
 import { downloadFileFromS3 } from "../aws";
-
 import { db, track_include } from '../db'
 import { db_asset_to_asset, db_track_to_track } from '../mappers';
 import { get_beatstars_token } from '../api/beatstars-api';
-import { ASSET_TYPE, PLATFORMS } from '../constants';
+import { ASSET_TYPE, PLATFORMS } from '../constants'
+import { BeatstarsMeta } from '../types/types';
+import { DbTrack } from '../types/db_types';
 
 export const bs_router = express.Router()
 
@@ -175,7 +176,7 @@ bs_router.post('/publish',
       // Buscar el track en la base de datos
       const track = await db.track.findUnique({
         where: { id: id_track }
-      })
+      }) as DbTrack | null
 
       if (track === null) {
         return api_error404('Track not found')
@@ -241,10 +242,10 @@ bs_router.post('/publish',
           platform: PLATFORMS.BEATSTARS,
         }
       })
-      const bs_meta = (bs_connection?.meta ?? {}) as Record<string, any>
-      const meta_tags: string[] = bs_meta.tags ?? ["dancehall", "afrobeat", "tyla"]
-      const meta_genres: string[] = bs_meta.genres ?? ["AFRO", "AFROBEAT", "AFROPOP"]
-      const meta_bpm: number = Number(bs_meta.bpm ?? 220)
+      const bs_meta = (bs_connection?.meta ?? {}) as BeatstarsMeta
+      const meta_tags: string[] = bs_meta.tags ?? []
+      const meta_genres: string[] = bs_meta.genres ?? []
+      const meta_bpm: number = track.bpm ? Number(track.bpm) : 220
       const bs_prefix: string = (bs_meta.name_prefix ?? '').trim()
       const bs_suffix: string = (bs_meta.name_suffix ?? '').trim()
       const track_name = [bs_prefix, track.name, bs_suffix].filter(Boolean).join(' ')
@@ -335,6 +336,7 @@ bs_router.post('/publish',
               "tags": meta_tags,
               "genres": meta_genres,
               "bpmDouble": meta_bpm,
+              ...(track.musical_key ? { "keyNote": track.musical_key } : {}),
               "instruments": [],
               "moods": []
             },

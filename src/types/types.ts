@@ -25,6 +25,10 @@ export type Track = {
   beatstars_url: string | null;
   publish_at: Date;
   beatstars_id_track: string | null;
+  bpm: string | null;
+  musical_key: string | null;
+  tags: string[];
+  genres: string[];
 }
 
 export type Settings = Record<string, string> //TODO:
@@ -35,9 +39,10 @@ export type YoutubeMeta = {
 }
 
 export type BeatstarsMeta = {
-  tags?: string[];
-  genres?: string[];
-  bpm?: string;
+  tags: string[];
+  genres: string[];
+  name_prefix?: string;
+  name_suffix?: string;
 }
 
 export type ProfileConnection = {
