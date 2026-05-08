@@ -13,7 +13,8 @@ export const track_include = {
       name: true,
       type: true,
       s3_key: true,
-      beatstars_id: true
+      beatstars_id: true,
+      crop_data: true
     }
   },
   thumbnail: {
@@ -22,7 +23,8 @@ export const track_include = {
       name: true,
       type: true,
       s3_key: true,
-      beatstars_id: true
+      beatstars_id: true,
+      crop_data: true
     }
   }
 }

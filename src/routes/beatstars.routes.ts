@@ -1,6 +1,5 @@
 import express from 'express'
-import sharp from 'sharp';
-import { asyncHandler, beatstarsRequest, beatstarsSlug, checkGraphQLErrors, extra_data_from_response, get_current_user, sleep } from "../utils";
+import { asyncHandler, beatstarsRequest, beatstarsSlug, checkGraphQLErrors, extra_data_from_response, get_current_user, sleep, apply_crop_to_buffer } from "../utils";
 import { BeatStarsTrack } from "../types/bs_types";
 import { api_error400, api_error403, api_error404, api_error500 } from '../errors';
 import { downloadFileFromS3 } from "../aws";
@@ -43,21 +42,11 @@ bs_router.post(
 
     const file = await downloadFileFromS3(db_asset.s3_key)
 
-    // Recortar thumbnail a 1:1 centrado sin escalar
+    // Recortar thumbnail a 1:1: usa crop configurado o crop centrado automático
     let uploadBuffer: Buffer = file;
     if (db_asset.type === ASSET_TYPE.THUMBNAIL) {
-      const image = sharp(file);
-      const { width, height } = await image.metadata();
-      if (!width || !height) {
-        return api_error400('Unable to read image dimensions');
-      }
-      const size = Math.min(width, height);
-      const left = Math.floor((width - size) / 2);
-      const top = Math.floor((height - size) / 2);
-      uploadBuffer = await image
-        .extract({ left, top, width: size, height: size })
-        .png()
-        .toBuffer();
+      const crop = db_asset.crop_data as { x: number; y: number; w: number; h: number } | null
+      uploadBuffer = await apply_crop_to_buffer(file, crop ?? undefined)
     }
 
     /* --------------------------------------------------
@@ -103,7 +92,6 @@ bs_router.post(
     }
 
     const bs_asset = assetBody.data.create;
-
     /* --------------------------------------------------
        2) UPLOAD TO BEATSTARS S3
     -------------------------------------------------- */
@@ -126,7 +114,7 @@ bs_router.post(
     );
 
     if (s3ParamsRes.status !== 200) {
-      console.log(await s3ParamsRes.text())
+      console.error('[BS upload] Unable to get S3 params:', await s3ParamsRes.text())
       return api_error500('Unable to get S3 params');
     }
 
@@ -187,6 +175,13 @@ bs_router.post('/publish',
         return api_error403('You do not have permission to publish this track')
       }
 
+      // Contexto para los logs de error del flujo de publish
+      const log_ctx = { id_track: track.id, track_name: track.name, id_profile: track.id_profile }
+      const bs_error = (msg: string, extra?: object): never => {
+        console.error('[BS publish]', { ...log_ctx, ...extra, msg })
+        return api_error500(msg)
+      }
+
       // Idempotent: if already published on BeatStars, return existing share link
       if (track.beatstars_url) {
         return res.json({
@@ -226,7 +221,7 @@ bs_router.post('/publish',
         }
       })
       if (thumbnnail === null) {
-        return api_error404('Thumbnnail not found')
+        return api_error404('Thumbnail not found')
       }
 
       if (!track.id_profile) {
@@ -245,7 +240,7 @@ bs_router.post('/publish',
       const bs_meta = (bs_connection?.meta ?? {}) as BeatstarsMeta
       const meta_tags: string[] = bs_meta.tags ?? []
       const meta_genres: string[] = bs_meta.genres ?? []
-      const meta_bpm: number = track.bpm ? Number(track.bpm) : 220
+      const meta_bpm: number = track.bpm ? Number(track.bpm) : (bs_meta.default_bpm ?? 0)
       const bs_prefix: string = (bs_meta.name_prefix ?? '').trim()
       const bs_suffix: string = (bs_meta.name_suffix ?? '').trim()
       const track_name = [bs_prefix, track.name, bs_suffix].filter(Boolean).join(' ')
@@ -272,7 +267,7 @@ bs_router.post('/publish',
         })
 
       if (add_track_response.status !== 200) {
-        api_error500((await extra_data_from_response(add_track_response)))
+        return bs_error('AddTrack failed', { http_status: add_track_response.status, body: await extra_data_from_response(add_track_response) })
       }
 
       const add_track_body: {
@@ -290,7 +285,7 @@ bs_router.post('/publish',
       }
 
       if (thumbnnail.beatstars_id === null) {
-        return api_error400('Invalid thumbnnail: not uploaded')
+        return api_error400('Invalid thumbnail: not uploaded')
       }
       const attach_audio_response = await beatstarsRequest("https://core.prod.beatstars.net/studio/graphql?op=attachMainAudio", {
         method: "POST",
@@ -306,7 +301,7 @@ bs_router.post('/publish',
       })
 
       if (attach_audio_response.status !== 200) {
-        api_error500((await extra_data_from_response(attach_audio_response)))
+        return bs_error('attachMainAudio failed', { http_status: attach_audio_response.status, body: await extra_data_from_response(attach_audio_response) })
       }
 
       const attach_thumbnail_response = await beatstarsRequest("https://core.prod.beatstars.net/studio/graphql?op=trackFormAttachArtwork", {
@@ -320,7 +315,7 @@ bs_router.post('/publish',
       })
 
       if (attach_thumbnail_response.status !== 200) {
-        api_error500((await extra_data_from_response(attach_thumbnail_response)))
+        return bs_error('attachArtwork failed', { http_status: attach_thumbnail_response.status, body: await extra_data_from_response(attach_thumbnail_response) })
       }
 
 
@@ -336,7 +331,7 @@ bs_router.post('/publish',
               "tags": meta_tags,
               "genres": meta_genres,
               "bpmDouble": meta_bpm,
-              ...(track.musical_key ? { "keyNote": track.musical_key } : {}),
+              ...(track.musical_key ?? bs_meta.default_key ? { "keyNote": track.musical_key ?? bs_meta.default_key } : {}),
               "instruments": [],
               "moods": []
             },
@@ -344,7 +339,6 @@ bs_router.post('/publish',
             "thirdPartyLoopsAndSample": [],
             "title": track_name,
             "visibility": "PUBLIC",
-            "boostCampaign": false,
             "freeDownloadSettings": {
               "enabled": false,
               "fileType": "TAGGED_MP3",
@@ -396,23 +390,20 @@ bs_router.post('/publish',
 
 
         if (check_track_graphql_errors.hasErrors) {
-          return api_error500(check_track_graphql_errors.messages.join(' - '))
-
+          return bs_error('GetTrack GraphQL errors', { beatstars_id_track, gql_errors: check_track_graphql_errors.messages })
         }
 
         const bundle = check_track_body.data.member.inventory.track.bundle
         if (bundle !== null && bundle.progress === 'ERROR') {
-          api_error500('File audio error')
+          return bs_error('Audio encoding failed (bundle.progress = ERROR)', { beatstars_id_track })
         }
 
-        has_bundle = bundle !== null
-      }
+        has_bundle = bundle !== null      }
 
       if (!has_bundle) {
-        return api_error500('Audio not attached after maximum retries')
+        return bs_error('Audio not attached after maximum retries', { beatstars_id_track })
       }
 
-      console.log('[BS publish] request body:', raw)
       const publish_track_response = await beatstarsRequest("https://core.prod.beatstars.net/studio/graphql?op=PublishTrackForm", {
         method: "POST",
         headers,
@@ -432,9 +423,7 @@ bs_router.post('/publish',
         graphql_errors.hasErrors
         || !publish_track_body.data?.publishTrack?.shareUrl
       ) {
-        console.log({ publish_errors: JSON.stringify(publish_track_body, null, 2) })
-        return api_error500(graphql_errors.messages.join(', '))
-
+        return bs_error('PublishTrackForm failed', { beatstars_id_track, gql_errors: graphql_errors.messages, response: publish_track_body })
       }
 
       const db_track = await db.track.update({

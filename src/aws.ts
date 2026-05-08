@@ -193,6 +193,26 @@ export async function invokeVideoLambda(audioS3Key: string, imageS3Key: string, 
 
 export { s3Client, BUCKET };
 
+/**
+ * Sube un Buffer directamente a S3 (sin pasar por disco)
+ */
+export async function uploadBufferToS3(
+  buffer: Buffer,
+  key: string,
+  contentType: string
+): Promise<void> {
+  const upload = new Upload({
+    client: s3Client,
+    params: {
+      Bucket: BUCKET,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+    },
+  })
+  await upload.done()
+}
+
 
 
 

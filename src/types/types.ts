@@ -5,6 +5,13 @@ export type AssetType = EnumOptions<typeof ASSET_TYPE>
 export type TrackStatus = EnumOptions<typeof TRACK_STATUS>
 export type Platform = EnumOptions<typeof PLATFORMS>
 
+export type CropData = {
+  x: number; // porcentaje 0.0–1.0
+  y: number;
+  w: number;
+  h: number;
+}
+
 export type Asset = {
   id: string;
   name: string;
@@ -12,6 +19,7 @@ export type Asset = {
   url: string;
   s3_uploaded: boolean;
   bs_uploaded: boolean;
+  crop?: CropData;
 }
 
 export type Track = {
@@ -43,6 +51,8 @@ export type BeatstarsMeta = {
   genres: string[];
   name_prefix?: string;
   name_suffix?: string;
+  default_bpm?: number;
+  default_key?: string;
 }
 
 export type ProfileConnection = {

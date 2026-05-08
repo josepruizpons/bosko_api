@@ -2,11 +2,11 @@ import express from 'express'
 import { google } from 'googleapis';
 import type { GaxiosResponseWithHTTP2 } from 'googleapis-common';
 import type { youtube_v3 } from 'googleapis';
-import { api_error400, api_error500 } from '../errors';
-import { asyncHandler, buffer_to_stream, generate_video, get_current_user, get_profile, is_youtube_quota_error, youtubeUrl } from '../utils';
+import { api_error400, api_error403, api_error404, api_error429, api_error500 } from '../errors';
+import { apply_crop_to_buffer, asyncHandler, buffer_to_stream, generate_video, get_current_user, get_profile, is_youtube_quota_error, youtubeUrl } from '../utils';
 import { get_google_client } from '../google_auth';
 import { db, track_include } from '../db'
-import { deleteFileFromS3, downloadFileFromS3, invokeVideoLambda } from '../aws';
+import { deleteFileFromS3, downloadFileFromS3, invokeVideoLambda, uploadBufferToS3 } from '../aws';
 import { db_track_to_track } from '../mappers';
 import { PLATFORMS, PROD_HOSTNAME } from '../constants';
 
@@ -48,127 +48,150 @@ google_router.get('/connect', async (req, res) => {
 
 google_router.post(
   '/upload-youtube',
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const user = await get_current_user(req)
 
-    try {
-      const id_track: string | null = req.body.id_track ?? null
+    const id_track: string | null = req.body.id_track ?? null
 
-      if (typeof id_track !== 'string') return api_error400('Invalid track')
+    if (typeof id_track !== 'string') return api_error400('Invalid track')
 
+    const track = await db.track.findUnique({
+      where: { id: id_track }
+    })
 
-      const track = await db.track.findUnique({
-        where: { id: id_track }
-      })
+    if (track === null) return api_error404('Track not found')
 
-      if (track === null) return api_error400('Track not found')
+    // Verificar que el track pertenece al usuario
+    if (track.id_user !== user.id) {
+      return api_error403('You do not have permission to upload this track')
+    }
 
-      // Verify track belongs to user
-      if (track.id_user !== user.id) {
-        return api_error400('You do not have permission to upload this track')
+    if (!track.id_profile) {
+      return api_error400('Track has no profile assigned')
+    }
+
+    const google_client = await get_google_client(track.id_profile)
+    if (!google_client) {
+      return api_error400('Profile has no YouTube connection')
+    }
+
+    // Leer descripción desde la conexión YouTube del perfil (con fallback hardcoded)
+    const yt_connection = await db.profile_connections.findFirst({
+      where: {
+        id_profile: track.id_profile,
+        platform: PLATFORMS.YOUTUBE,
       }
-
-      if (!track.id_profile) {
-        return api_error400('Track has no profile assigned')
-      }
-
-      const google_client = await get_google_client(track.id_profile)
-      if (!google_client) {
-        return api_error400('Profile has no YouTube connection')
-      }
-
-      // Read description from profile's YouTube connection meta (with hardcoded fallback)
-      const yt_connection = await db.profile_connections.findFirst({
-        where: {
-          id_profile: track.id_profile,
-          platform: PLATFORMS.YOUTUBE,
-        }
-      })
-      const yt_meta = (yt_connection?.meta ?? {}) as Record<string, any>
-      const default_description = `get your license: ${track.beatstars_url}
+    })
+    const yt_meta = (yt_connection?.meta ?? {}) as Record<string, any>
+    const default_description = `get your license: ${track.beatstars_url}
 
 
 
 If you want to make profit with your music (upload your song to streaming services for example), you must purchase a license that is suitable for yourself before releasing your song. Regardless if you've purchased a license or not, you can't register your song on BMI/ASCAP/WIPO/OMPI or any worldwide copyright organization or any other Content ID system unless you have acquired an Exclusive license.`
-      const video_description: string = yt_meta.description
-        ? yt_meta.description.replace('{bs_url}', track.beatstars_url ?? '')
-        : default_description
-      const yt_prefix: string = (yt_meta.name_prefix ?? '').trim()
-      const yt_suffix: string = (yt_meta.name_suffix ?? '').trim()
-      const track_title = [yt_prefix, track.name, yt_suffix].filter(Boolean).join(' ').slice(0, 100)
+    const video_description: string = yt_meta.description
+      ? yt_meta.description.replace('{bs_url}', track.beatstars_url ?? '')
+      : default_description
+    const yt_prefix: string = (yt_meta.name_prefix ?? '').trim()
+    const yt_suffix: string = (yt_meta.name_suffix ?? '').trim()
+    const track_title = [yt_prefix, track.name, yt_suffix].filter(Boolean).join(' ').slice(0, 100)
 
-      // Idempotent: if already uploaded, return existing URL
-      if (track.yt_url) {
-        return res.json({ success: true, yt_url: track.yt_url })
-      }
+    // Idempotente: si ya fue subido, devolver URL existente
+    if (track.yt_url) {
+      return res.json({ success: true, yt_url: track.yt_url })
+    }
 
-      const publish_date = track.publish_at
-      if (publish_date !== null && isNaN(publish_date.getTime())) {
-        return api_error400('Invalid publish_at date')
-      }
+    const publish_date = track.publish_at
+    if (publish_date !== null && isNaN(publish_date.getTime())) {
+      return api_error400('Invalid publish_at date')
+    }
 
-      let videoBuffer: Buffer;
-      let videoS3Key: string | undefined;
+    let videoBuffer: Buffer | undefined;
+    let videoS3Key: string | undefined;
 
-      if (track.id_beat === null) {
-        return api_error400('Track is missing id_beat')
-      }
+    if (track.id_beat === null) {
+      return api_error400('Track is missing id_beat')
+    }
 
-      if (track.id_thumbnail === null) {
-        return api_error400('Track is missing id_thumbnail')
-      }
+    if (track.id_thumbnail === null) {
+      return api_error400('Track is missing id_thumbnail')
+    }
 
-      // Get assets from database (both production and local)
-      const beatAsset = await db.asset.findUnique({
-        where: { id: track.id_beat }
-      });
+    // Obtener assets de la base de datos
+    const beatAsset = await db.asset.findUnique({
+      where: { id: track.id_beat }
+    });
 
-      const thumbnailAsset = await db.asset.findUnique({
-        where: { id: track.id_thumbnail }
-      });
+    const thumbnailAsset = await db.asset.findUnique({
+      where: { id: track.id_thumbnail }
+    });
 
-      if (!beatAsset?.s3_key) {
-        return api_error400('Beat not found in S3');
-      }
+    if (!beatAsset?.s3_key) {
+      return api_error400('Beat not found in S3');
+    }
 
-      if (!thumbnailAsset?.s3_key) {
-        return api_error400('Thumbnail not found in S3');
-      }
+    if (!thumbnailAsset?.s3_key) {
+      return api_error400('Thumbnail not found in S3');
+    }
 
-      const isProduction = process.env.NODE_ENV === 'production';
+    const isProduction = process.env.NODE_ENV === 'production';
 
+    // Leer setting yt_crop_thumbnail del perfil
+    const profile_for_settings = await db.profiles.findUnique({ where: { id: track.id_profile } })
+    const profile_settings = (profile_for_settings?.settings ?? {}) as Record<string, string>
+    const yt_crop_thumbnail = profile_settings.yt_crop_thumbnail === 'true'
+
+    // Determinar la S3 key del thumbnail a usar (original o cropeada temporalmente)
+    let thumb_s3_key_for_video = thumbnailAsset.s3_key
+    let temp_cropped_s3_key: string | undefined
+
+    if (yt_crop_thumbnail) {
+      const thumbBuffer = await downloadFileFromS3(thumbnailAsset.s3_key)
+      const crop = thumbnailAsset.crop_data as { x: number; y: number; w: number; h: number } | null
+      const croppedBuffer = await apply_crop_to_buffer(thumbBuffer, crop ?? undefined)
+      // En producción, subir temporalmente a S3 para pasarlo a Lambda
       if (isProduction) {
-        // Production: Use Lambda to generate video
-        console.log('Using Lambda for video generation in production');
-
-        // Invoke Lambda
-        videoS3Key = await invokeVideoLambda(
-          beatAsset.s3_key,
-          thumbnailAsset.s3_key,
-          track_title
-        );
-
-        console.log('Lambda returned S3 key:', videoS3Key);
-
-        // Download video from S3 using SDK
-        videoBuffer = await downloadFileFromS3(videoS3Key);
-
-        console.log('Video downloaded from S3: ' + track_title);
+        temp_cropped_s3_key = `thumbnails/tmp_yt_${Date.now()}_${thumbnailAsset.id}.png`
+        await uploadBufferToS3(croppedBuffer, temp_cropped_s3_key, 'image/png')
+        thumb_s3_key_for_video = temp_cropped_s3_key
       } else {
-        // Development: Download from S3 and generate video locally
-        console.log('Development: Downloading assets from S3 for local video generation');
-
-        const audioBuffer = await downloadFileFromS3(beatAsset.s3_key);
-        const thumbBuffer = await downloadFileFromS3(thumbnailAsset.s3_key);
-
-        videoBuffer = await generate_video(audioBuffer, thumbBuffer)
-        console.log('Video generated locally: ' + track_title)
+        // En desarrollo, generamos el vídeo directamente con el buffer cropeado
+        const audioBuffer = await downloadFileFromS3(beatAsset.s3_key)
+        videoBuffer = await generate_video(audioBuffer, croppedBuffer)
+        console.log('Video generated locally with cropped thumbnail: ' + track_title)
       }
+    }
 
-      // Subir a YouTube
+    if (isProduction) {
+      // Producción: usar Lambda para generar el vídeo
+      console.log('Using Lambda for video generation in production');
+
+      videoS3Key = await invokeVideoLambda(
+        beatAsset.s3_key,
+        thumb_s3_key_for_video,
+        track_title
+      );
+
+      console.log('Lambda returned S3 key:', videoS3Key);
+
+      videoBuffer = await downloadFileFromS3(videoS3Key);
+
+      console.log('Video downloaded from S3: ' + track_title);
+    } else if (!videoBuffer) {
+      // Desarrollo sin crop YT: descargar de S3 y generar vídeo localmente
+      console.log('Development: Downloading assets from S3 for local video generation');
+
+      const audioBuffer = await downloadFileFromS3(beatAsset.s3_key);
+      const thumbBuffer = await downloadFileFromS3(thumbnailAsset.s3_key);
+
+      videoBuffer = await generate_video(audioBuffer, thumbBuffer)
+      console.log('Video generated locally: ' + track_title)
+    }
+
+    // Subir a YouTube (capturar errores de quota)
+    let yt_response;
+    try {
       const youtube = google.youtube({ version: 'v3', auth: google_client })
-
-      const response = await youtube.videos.insert({
+      yt_response = await youtube.videos.insert({
         part: ['snippet', 'status'],
         requestBody: {
           snippet: {
@@ -180,63 +203,68 @@ If you want to make profit with your music (upload your song to streaming servic
             publishAt: publish_date?.toISOString() ?? null
           },
         },
-        media: { body: buffer_to_stream(videoBuffer) },
+        media: { body: buffer_to_stream(videoBuffer!) },
       })
-
-      const yt_id = response.data.id ?? null
-      if(!yt_id){
-        return api_error500('YT id not generated')
-      }
-
-      const db_track = await db.track.update({
-        where: {id: track.id},
-        data: { yt_url: youtubeUrl(yt_id)},
-        include: track_include
-      })
-
-      // Delete beat and thumbnail assets from S3 after successful YouTube upload
-      if (beatAsset?.s3_key) {
-        try {
-          await deleteFileFromS3(beatAsset.s3_key);
-          console.log('Beat deleted from S3:', beatAsset.s3_key);
-        } catch (deleteErr) {
-          console.error('Error deleting beat from S3:', deleteErr);
-        }
-      }
-
-      if (thumbnailAsset?.s3_key) {
-        try {
-          await deleteFileFromS3(thumbnailAsset.s3_key);
-          console.log('Thumbnail deleted from S3:', thumbnailAsset.s3_key);
-        } catch (deleteErr) {
-          console.error('Error deleting thumbnail from S3:', deleteErr);
-        }
-      }
-
-      // Delete temporary video from S3 (production only)
-      if (isProduction && videoS3Key) {
-        try {
-          await deleteFileFromS3(videoS3Key);
-          console.log('Temporary video deleted from S3:', videoS3Key);
-        } catch (deleteErr) {
-          // Don't fail the entire operation if deletion fails
-          console.error('Error deleting video from S3:', deleteErr);
-        }
-      }
-
-      const updated_track = await db_track_to_track(db_track)
-      res.json(updated_track)
     } catch (err) {
-      console.error(err)
       if (is_youtube_quota_error(err)) {
-        return res.status(429).json({
-          error: 'YOUTUBE_QUOTA_EXCEEDED',
-          message: 'YouTube daily upload limit reached. Try again tomorrow.',
-        })
+        return api_error429('YouTube daily upload limit reached. Try again tomorrow.')
       }
-      res.status(500).json({ success: false, error: String(err) })
+      throw err
     }
-  }
+
+    const yt_id = yt_response.data.id ?? null
+    if (!yt_id) {
+      return api_error500('YT id not generated')
+    }
+
+    const db_track = await db.track.update({
+      where: { id: track.id },
+      data: { yt_url: youtubeUrl(yt_id) },
+      include: track_include
+    })
+
+    // Eliminar assets de S3 tras subida exitosa a YouTube
+    if (beatAsset?.s3_key) {
+      try {
+        await deleteFileFromS3(beatAsset.s3_key);
+        console.log('Beat deleted from S3:', beatAsset.s3_key);
+      } catch (deleteErr) {
+        console.error('Error deleting beat from S3:', deleteErr);
+      }
+    }
+
+    if (thumbnailAsset?.s3_key) {
+      try {
+        await deleteFileFromS3(thumbnailAsset.s3_key);
+        console.log('Thumbnail deleted from S3:', thumbnailAsset.s3_key);
+      } catch (deleteErr) {
+        console.error('Error deleting thumbnail from S3:', deleteErr);
+      }
+    }
+
+    // Eliminar vídeo temporal de S3 (solo en producción)
+    if (isProduction && videoS3Key) {
+      try {
+        await deleteFileFromS3(videoS3Key);
+        console.log('Temporary video deleted from S3:', videoS3Key);
+      } catch (deleteErr) {
+        console.error('Error deleting video from S3:', deleteErr);
+      }
+    }
+
+    // Eliminar thumbnail cropeado temporal de S3 (solo en producción si se generó)
+    if (isProduction && temp_cropped_s3_key) {
+      try {
+        await deleteFileFromS3(temp_cropped_s3_key)
+        console.log('Temporary cropped thumbnail deleted from S3:', temp_cropped_s3_key)
+      } catch (deleteErr) {
+        console.error('Error deleting temp cropped thumbnail from S3:', deleteErr)
+      }
+    }
+
+    const updated_track = await db_track_to_track(db_track)
+    res.json(updated_track)
+  })
 )
 
 // GET /api/google/last-scheduled?id_profile=<id>

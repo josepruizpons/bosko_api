@@ -8,7 +8,8 @@ type DbTrackBase = Prisma.trackGetPayload<{
         name: true,
         type: true,
         s3_key: true,
-        beatstars_id: true
+        beatstars_id: true,
+        crop_data: true
       }
     }
     thumbnail: {
@@ -17,7 +18,8 @@ type DbTrackBase = Prisma.trackGetPayload<{
         name: true,
         type: true,
         s3_key: true,
-        beatstars_id: true
+        beatstars_id: true,
+        crop_data: true
       }
     }
   }

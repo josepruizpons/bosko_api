@@ -2,12 +2,13 @@ import express from 'express'
 import multer from 'multer';
 import sharp from 'sharp';
 import { asyncHandler, generate_id, get_current_user, get_profile } from "../utils";
-import { api_error400, api_error404 } from '../errors';
+import { api_error400, api_error403, api_error404 } from '../errors';
 import { uploadFileToS3, streamFileFromS3 } from "../aws";
 import { db } from '../db'
 import { ASSET_TYPE } from '../constants';
 import { db_asset_to_asset } from '../mappers';
 import { unlink } from 'fs/promises';
+import type { CropData } from '../types/types';
 
 export const assets_router = express.Router()
 
@@ -166,5 +167,36 @@ assets_router.get('/:id',
 
     // @ts-ignore - Node.js readable stream compatibility
     stream.pipe(res);
+  })
+);
+
+// Guardar configuración de crop para un asset
+assets_router.patch('/:id/crop',
+  asyncHandler(async (req, res) => {
+    const user = await get_current_user(req)
+    const id = req.params.id as string
+
+    const asset = await db.asset.findUnique({ where: { id } })
+    if (!asset) return api_error404('Asset not found')
+    if (asset.id_user !== user.id) return api_error403('Forbidden')
+    if (asset.type !== ASSET_TYPE.THUMBNAIL) return api_error400('Crop only applies to thumbnail assets')
+
+    const { x, y, w, h } = req.body as CropData
+    if (
+      typeof x !== 'number' || typeof y !== 'number' ||
+      typeof w !== 'number' || typeof h !== 'number' ||
+      [x, y, w, h].some(v => v < 0 || v > 1)
+    ) {
+      return api_error400('Invalid crop values. x, y, w, h must be numbers between 0 and 1')
+    }
+
+    const crop_data: CropData = { x, y, w, h }
+    const updated = await db.asset.update({
+      where: { id },
+      data: { crop_data },
+    })
+
+    const result = await db_asset_to_asset(updated)
+    res.json(result)
   })
 );

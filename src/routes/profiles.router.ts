@@ -5,9 +5,11 @@ import { db } from '../db'
 import { db_profile_to_profile } from '../mappers';
 import { PLATFORMS } from '../constants';
 import bs_genres_data from '../api/bs_genres.json';
+import bs_key_notes_data from '../api/bs_key_notes.json';
 import { randomUUID } from 'crypto'
 
 const VALID_GENRE_KEYS = new Set(bs_genres_data.genres.map((g: { key: string }) => g.key));
+const VALID_KEY_NOTES = new Set(bs_key_notes_data.keyNotes.map((k: { key: string }) => k.key));
 
 // One-time connect tokens — live in memory, TTL 5 min
 const BS_TOKEN_TTL_MS = 5 * 60 * 1000
@@ -217,6 +219,17 @@ profiles_router.patch('/:id/connections/:platform',
         const invalid = (meta.genres as unknown[]).filter(k => typeof k !== 'string' || !VALID_GENRE_KEYS.has(k))
         if (invalid.length > 0) {
           return api_error400(`Invalid genre keys: ${invalid.join(', ')}`)
+        }
+        if ('default_bpm' in meta && meta.default_bpm !== undefined) {
+          const bpm = Number(meta.default_bpm)
+          if (!Number.isFinite(bpm) || bpm <= 0) {
+            return api_error400('default_bpm must be a positive number')
+          }
+        }
+        if ('default_key' in meta && meta.default_key !== undefined) {
+          if (typeof meta.default_key !== 'string' || !VALID_KEY_NOTES.has(meta.default_key)) {
+            return api_error400(`Invalid default_key: ${meta.default_key}`)
+          }
         }
       }
       updateData.meta = meta

@@ -205,17 +205,8 @@ app.post('/api/profiles/:id/connections/beatstars/token', express.json(), bs_con
 const api_router = express.Router()
 api_router.use(validate_session)
 
-api_router.get('/check', async (req, res) => {
-  const sessionId = req.session.userId
-  console.log(req.cookies)
-
-  if (!sessionId) {
-    return res.status(401).json({
-      error: "No active session",
-    });
-  }
-
-  return res.status(204).send()
+api_router.get('/check', (_req, res) => {
+  res.status(204).send()
 })
 api_router.use('/bs', bs_router)
 api_router.use('/google', google_router)

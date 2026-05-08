@@ -1,12 +1,13 @@
 import { Request, Response, NextFunction } from "express";
+import { ApiError } from "../errors";
 
 export function validate_session(
   req: Request,
-  res: Response,
+  _res: Response,
   next: NextFunction
 ) {
   if (!req.session.userId) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return next(new ApiError(401, 'UNAUTHORIZED', 'No active session'));
   }
 
   next();

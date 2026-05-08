@@ -90,7 +90,7 @@ tracks_router.post('/',
       }
 
       if (publish_at && isNaN(publish_at.getTime())) {
-        throw new Error("Invalid date")
+        return api_error400('Invalid publish_at date')
       }
 
       if (id_thumbnail !== null) {
@@ -245,45 +245,41 @@ tracks_router.delete('/:id',
     const user = await get_current_user(req)
     const id = req.params.id as string
 
-    try {
-      // First get the track with assets to get s3_key values
-      const track_to_delete = await db.track.findUnique({
-        where: { id, id_user: user.id },
-        include: track_include
-      })
+    // Obtener el track con sus assets para conseguir los s3_key
+    const track_to_delete = await db.track.findUnique({
+      where: { id, id_user: user.id },
+      include: track_include
+    })
 
-      if (!track_to_delete) {
-        return res.status(404).json({ message: 'Track not found' })
-      }
-
-      // Delete the track from database
-      const deleted_track = await db.track.delete({
-        where: { id, id_user: user.id },
-        include: track_include
-      })
-
-      // Delete associated S3 assets (beat and thumbnail)
-      if (track_to_delete.beat?.s3_key) {
-        try {
-          await deleteFileFromS3(track_to_delete.beat.s3_key);
-          console.log('Beat deleted from S3 on track delete:', track_to_delete.beat.s3_key);
-        } catch (deleteErr) {
-          console.error('Error deleting beat from S3 on track delete:', deleteErr);
-        }
-      }
-
-      if (track_to_delete.thumbnail?.s3_key) {
-        try {
-          await deleteFileFromS3(track_to_delete.thumbnail.s3_key);
-          console.log('Thumbnail deleted from S3 on track delete:', track_to_delete.thumbnail.s3_key);
-        } catch (deleteErr) {
-          console.error('Error deleting thumbnail from S3 on track delete:', deleteErr);
-        }
-      }
-
-      res.json(await db_track_to_track(deleted_track))
-    } catch (error) {
-      res.status(404).json({ message: 'Track not found' })
+    if (!track_to_delete) {
+      return api_error404('Track not found')
     }
+
+    // Eliminar el track de la base de datos
+    const deleted_track = await db.track.delete({
+      where: { id, id_user: user.id },
+      include: track_include
+    })
+
+    // Eliminar assets de S3 asociados (beat y thumbnail)
+    if (track_to_delete.beat?.s3_key) {
+      try {
+        await deleteFileFromS3(track_to_delete.beat.s3_key);
+        console.log('Beat deleted from S3 on track delete:', track_to_delete.beat.s3_key);
+      } catch (deleteErr) {
+        console.error('Error deleting beat from S3 on track delete:', deleteErr);
+      }
+    }
+
+    if (track_to_delete.thumbnail?.s3_key) {
+      try {
+        await deleteFileFromS3(track_to_delete.thumbnail.s3_key);
+        console.log('Thumbnail deleted from S3 on track delete:', track_to_delete.thumbnail.s3_key);
+      } catch (deleteErr) {
+        console.error('Error deleting thumbnail from S3 on track delete:', deleteErr);
+      }
+    }
+
+    res.json(await db_track_to_track(deleted_track))
   })
 )

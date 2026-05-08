@@ -2,7 +2,7 @@ import { get_bs_audio_by_id, get_bs_image_by_id } from "./api/beatstars-api";
 import { getSignedFileUrl } from "./aws";
 import { ASSET_TYPE, PLATFORMS } from "./constants";
 import { DbAsset, DbProfile, DbProfileConnection, DbTrack } from "./types/db_types";
-import { Asset, AssetType, BeatstarsMeta, Profile, ProfileConnection, Settings, Track, YoutubeMeta } from "./types/types";
+import { Asset, AssetType, BeatstarsMeta, CropData, Profile, ProfileConnection, Settings, Track, YoutubeMeta } from "./types/types";
 import { compute_track_status } from "./utils";
 
 export const db_track_to_track = async (db_track: DbTrack): Promise<Track> => {
@@ -56,6 +56,7 @@ export const db_track_to_track = async (db_track: DbTrack): Promise<Track> => {
             url,
             s3_uploaded: true,
             bs_uploaded: asset.beatstars_id !== null,
+            crop: asset.crop_data ? asset.crop_data as CropData : undefined,
           }
         }
 
@@ -86,6 +87,7 @@ export const db_asset_to_asset = async (db_asset: DbAsset, url?: string): Promis
     url: _url,
     s3_uploaded: true,
     bs_uploaded: db_asset.beatstars_id !== null,
+    crop: db_asset.crop_data ? db_asset.crop_data as CropData : undefined,
   }
 }
 

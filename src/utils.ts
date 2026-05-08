@@ -2,6 +2,7 @@ import fs from 'fs'
 import ffmpeg from 'fluent-ffmpeg'
 import path from 'path'
 import crypto from 'crypto'
+import sharp from 'sharp'
 
 import { ErrorRequestHandler, NextFunction, Request, RequestHandler, Response as ExpressResponse } from "express";
 import { api_error403, api_error404, ApiError } from "./errors";
@@ -10,7 +11,7 @@ import { db } from './db';
 import { Prisma } from './generated/prisma/client';
 import { TRACK_STATUS } from './constants';
 import { DbProfile, DbTrack } from './types/db_types';
-import { Profile, TrackStatus } from './types/types';
+import { CropData, Profile, TrackStatus } from './types/types';
 
 
 export const asyncHandler =
@@ -21,12 +22,14 @@ export const asyncHandler =
 
 export const errorHandler: ErrorRequestHandler = (
   err,
-  _,
+  req,
   res,
-  __
+  _
 ) => {
+  const request_context = `${req.method} ${req.path}`
+
   if (err instanceof ApiError) {
-    console.log({ err })
+    console.error(`[${request_context}] ${err.status_code} ${err.code}: ${err.message}`)
     res.status(err.status_code).json({
       error: err.code,
       message: err.message
@@ -34,11 +37,11 @@ export const errorHandler: ErrorRequestHandler = (
     return;
   }
 
-  console.log(err)
+  console.error(`[${request_context}] Unhandled error:`, err)
 
   res.status(500).json({
     error: 'INTERNAL_SERVER_ERROR',
-    message: 'Error inesperado'
+    message: 'Unexpected server error'
   });
 };
 
@@ -242,4 +245,39 @@ export function compute_track_status(db_track: DbTrack): TrackStatus {
   }
 
   return TRACK_STATUS.DRAFT
+}
+
+/**
+ * Aplica un crop 1:1 a un buffer de imagen.
+ * Si se pasa crop con porcentajes, los convierte a píxeles y extrae esa región.
+ * Si crop es null/undefined, aplica el cuadrado central automático (comportamiento original).
+ */
+export async function apply_crop_to_buffer(buffer: Buffer, crop?: CropData | null): Promise<Buffer> {
+  const image = sharp(buffer)
+  const { width, height } = await image.metadata()
+  if (!width || !height) throw new Error('Unable to read image dimensions')
+
+  let left: number, top: number, size: number
+
+  if (crop) {
+    // Porcentajes → píxeles
+    const px_x = Math.round(crop.x * width)
+    const px_y = Math.round(crop.y * height)
+    const px_w = Math.round(crop.w * width)
+    const px_h = Math.round(crop.h * height)
+    // Forzar cuadrado usando el menor lado del crop configurado
+    size = Math.min(px_w, px_h)
+    left = Math.max(0, Math.min(px_x, width - size))
+    top = Math.max(0, Math.min(px_y, height - size))
+  } else {
+    // Crop centrado automático
+    size = Math.min(width, height)
+    left = Math.floor((width - size) / 2)
+    top = Math.floor((height - size) / 2)
+  }
+
+  return image
+    .extract({ left, top, width: size, height: size })
+    .png()
+    .toBuffer()
 }
