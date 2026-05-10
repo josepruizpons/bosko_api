@@ -328,8 +328,8 @@ bs_router.post('/publish',
             "description": "",
             "excludeFromBulkDiscounts": false,
             "metadata": {
-              "tags": meta_tags,
-              "genres": meta_genres,
+              "tags": meta_tags.slice(0, 3),
+              "genres": meta_genres.slice(0, 3),
               "bpmDouble": meta_bpm,
               ...(track.musical_key ?? bs_meta.default_key ? { "keyNote": track.musical_key ?? bs_meta.default_key } : {}),
               "instruments": [],
@@ -423,6 +423,8 @@ bs_router.post('/publish',
         graphql_errors.hasErrors
         || !publish_track_body.data?.publishTrack?.shareUrl
       ) {
+        console.error('[BS publish] PublishTrackForm full response:', JSON.stringify(publish_track_body, null, 2))
+        console.error('[BS publish] PublishTrackForm request body:', JSON.stringify(JSON.parse(raw), null, 2))
         return bs_error('PublishTrackForm failed', { beatstars_id_track, gql_errors: graphql_errors.messages, response: publish_track_body })
       }
 
