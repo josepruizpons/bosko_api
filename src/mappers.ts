@@ -1,4 +1,4 @@
-import { get_bs_audio_by_id, get_bs_image_by_id } from "./api/beatstars-api";
+import { get_beatstars_token, get_bs_audio_by_id, get_bs_image_by_id, get_bs_member_capabilities } from "./api/beatstars-api";
 import { getSignedFileUrl } from "./aws";
 import { ASSET_TYPE, PLATFORMS } from "./constants";
 import { DbAsset, DbProfile, DbProfileConnection, DbTrack } from "./types/db_types";
@@ -17,6 +17,7 @@ export const db_track_to_track = async (db_track: DbTrack): Promise<Track> => {
     beatstars_url: db_track.beatstars_url,
     beat: null,
     thumbnail: null,
+    stem: null,
     beatstars_id_track: db_track.beatstars_id_track,
     bpm: db_track.bpm ?? null,
     musical_key: db_track.musical_key ?? null,
@@ -25,7 +26,7 @@ export const db_track_to_track = async (db_track: DbTrack): Promise<Track> => {
   }
 
   await Promise.all(
-    [db_track.beat, db_track.thumbnail].map(
+    [db_track.beat, db_track.thumbnail, db_track.stem].map(
       async (asset) => {
 
         if (asset === null || db_track.id_profile === null) return null
@@ -43,6 +44,10 @@ export const db_track_to_track = async (db_track: DbTrack): Promise<Track> => {
           if(bs_img !== null){
             url = bs_img.signedUrl
           }
+        } else if (asset.type === ASSET_TYPE.STEM) {
+          // El stem en BS es BINARY: no expone signed URL via track form helpers,
+          // así que servimos desde nuestro S3 aunque ya esté en BS.
+          url = await getSignedFileUrl(asset.s3_key)
         }
 
         let asset_with_url: Asset | null = null
@@ -65,6 +70,9 @@ export const db_track_to_track = async (db_track: DbTrack): Promise<Track> => {
         }
         if (asset.type === ASSET_TYPE.THUMBNAIL) {
           mapped_track.thumbnail = asset_with_url
+        }
+        if (asset.type === ASSET_TYPE.STEM) {
+          mapped_track.stem = asset_with_url
         }
       }
     )
@@ -91,9 +99,9 @@ export const db_asset_to_asset = async (db_asset: DbAsset, url?: string): Promis
   }
 }
 
-export const db_profile_connection_to_connection = (
+export const db_profile_connection_to_connection = async (
   db_profile_connection: DbProfileConnection,
-): ProfileConnection => {
+): Promise<ProfileConnection> => {
   const base = {
     id: db_profile_connection.id,
     id_profile: db_profile_connection.id_profile,
@@ -107,27 +115,39 @@ export const db_profile_connection_to_connection = (
         platform: PLATFORMS.YOUTUBE,
         meta: db_profile_connection.meta as YoutubeMeta,
       }
-    case PLATFORMS.BEATSTARS:
+    case PLATFORMS.BEATSTARS: {
+      const stored_meta = db_profile_connection.meta as BeatstarsMeta
+      let stems_available = false
+      try {
+        const token = await get_beatstars_token(db_profile_connection.id_profile)
+        const caps = await get_bs_member_capabilities(token)
+        stems_available = caps.stems_available
+      } catch {
+        stems_available = false
+      }
       return {
         ...base,
         platform: PLATFORMS.BEATSTARS,
-        meta: db_profile_connection.meta as BeatstarsMeta,
+        meta: { ...stored_meta, stems_available },
       }
+    }
     default:
       throw new Error(`Unknown platform: ${db_profile_connection.platform}`)
   }
 }
 
-export const db_profile_to_profile = (
+export const db_profile_to_profile = async (
   db_profile: DbProfile,
-): Profile => {
+): Promise<Profile> => {
   return {
     id: db_profile.id,
     id_user: db_profile.id_user,
     name: db_profile.name,
     settings: db_profile.settings as Settings,
-    connections: db_profile.profile_connections.map(
-      conn => db_profile_connection_to_connection(conn)
+    connections: await Promise.all(
+      db_profile.profile_connections.map(
+        conn => db_profile_connection_to_connection(conn)
+      )
     )
   }
 

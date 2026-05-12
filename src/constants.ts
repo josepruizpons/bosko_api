@@ -10,11 +10,15 @@ export const TRACK_STATUS = {
 export const BS_ASSET_TYPE = {
   AUDIO: 'AUDIO',
   IMAGE: 'IMAGE',
+  BINARY: 'BINARY',
 } as const
 export const ASSET_TYPE = {
   BEAT: 'BEAT',
   THUMBNAIL: 'THUMBNAIL',
+  STEM: 'STEM',
 } as const
+
+export const VALID_STEM_MIMETYPES = ['application/zip', 'application/x-zip-compressed'] as const
 
 export const PLATFORMS = {
   BEATSTARS: 'BEATSTARS',

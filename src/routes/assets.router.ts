@@ -5,7 +5,7 @@ import { asyncHandler, generate_id, get_current_user, get_profile } from "../uti
 import { api_error400, api_error403, api_error404 } from '../errors';
 import { uploadFileToS3, streamFileFromS3 } from "../aws";
 import { db } from '../db'
-import { ASSET_TYPE } from '../constants';
+import { ASSET_TYPE, VALID_STEM_MIMETYPES } from '../constants';
 import { db_asset_to_asset } from '../mappers';
 import { unlink } from 'fs/promises';
 import type { CropData } from '../types/types';
@@ -61,13 +61,17 @@ assets_router.post('/',
       return api_error400('Invalid file');
     }
 
-    if (type !== ASSET_TYPE.BEAT && type !== ASSET_TYPE.THUMBNAIL) {
-      return api_error400('Invalid type. Must be "beat" or "thumbnail"');
+    if (type !== ASSET_TYPE.BEAT && type !== ASSET_TYPE.THUMBNAIL && type !== ASSET_TYPE.STEM) {
+      return api_error400('Invalid type. Must be "BEAT", "THUMBNAIL" or "STEM"');
     }
 
-    const mimetype = {
-      'audio/vnd.wave': 'audio/wav',
-    }[file.mimetype] ?? file.mimetype
+    // Algunos navegadores no asignan mimetype al .zip (envían string vacío)
+    const file_ext = file.originalname.split('.').pop()?.toLowerCase() ?? ''
+    const inferred_zip = (file.mimetype === '' || file.mimetype === 'application/octet-stream') && file_ext === 'zip'
+
+    const mimetype = inferred_zip
+      ? 'application/zip'
+      : ({ 'audio/vnd.wave': 'audio/wav' }[file.mimetype] ?? file.mimetype)
 
     if (type === ASSET_TYPE.BEAT && !VALID_AUDIO_TYPES.includes(mimetype)) {
       return api_error400('Invalid file type for beat. Must be audio file');
@@ -77,8 +81,15 @@ assets_router.post('/',
       return api_error400('Invalid file type for thumbnail. Must be image file');
     }
 
+    if (type === ASSET_TYPE.STEM && !VALID_STEM_MIMETYPES.includes(mimetype as typeof VALID_STEM_MIMETYPES[number])) {
+      return api_error400('Invalid file type for stem. Must be a ZIP file');
+    }
+
     const asset_type = type
-    const s3_folder = type === ASSET_TYPE.BEAT ? 'beats' : 'thumbnails';
+    const s3_folder =
+      type === ASSET_TYPE.BEAT ? 'beats'
+        : type === ASSET_TYPE.THUMBNAIL ? 'thumbnails'
+          : 'stems';
 
     let uploadPath = file.path;
     let uploadMimetype = mimetype;

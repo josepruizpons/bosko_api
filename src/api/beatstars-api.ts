@@ -132,6 +132,152 @@ export const get_bs_image_by_id = async (
 }
 
 
+// Consulta el flag canUseStems del plan/cuenta BS. El campo vive en
+// configuration.inventory.track.permissions.canUseStems — descubierto capturando
+// la query `getMember` real del studio (scripts/capture-stems-upload.mjs).
+export const get_bs_member_capabilities = async (token: string): Promise<{ stems_available: boolean }> => {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json"
+  }
+
+  try {
+    const response = await fetch("https://core.prod.beatstars.net/studio/graphql?op=getStemsPermission", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        operationName: "getStemsPermission",
+        variables: {},
+        query: "query getStemsPermission {\n  configuration {\n    inventory {\n      track {\n        permissions {\n          canUseStems\n          canUseStemsDisabledReason\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n}",
+      }),
+      redirect: "follow"
+    })
+
+    const body: {
+      data?: {
+        configuration?: {
+          inventory?: {
+            track?: {
+              permissions?: { canUseStems?: boolean; canUseStemsDisabledReason?: string | null }
+            }
+          }
+        }
+      }
+    } = await response.json()
+
+    const can_use_stems = body?.data?.configuration?.inventory?.track?.permissions?.canUseStems
+    return { stems_available: can_use_stems ?? false }
+  } catch {
+    return { stems_available: false }
+  }
+}
+
+// Devuelve el member id (formato "MR<numeric>"). Necesario para el metadata.user
+// del flujo multipart de subida de stems.
+export const get_bs_member_id = async (token: string): Promise<string> => {
+  const res = await fetch('https://core.prod.beatstars.net/studio/graphql?op=getMemberId', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      operationName: 'getMemberId',
+      variables: {},
+      query: 'query getMemberId { member { id } }',
+    }),
+  })
+  const body: { data?: { member?: { id?: string } } } = await res.json()
+  const id = body?.data?.member?.id
+  if (!id) api_error500('Failed to fetch BeatStars member id')
+  return id
+}
+
+// Sube un buffer ZIP a BeatStars via el flujo multipart de uppy-v4. Devuelve cuando
+// el upload se ha completado (parts ETags consolidados). El `asset_id` es el id
+// devuelto por createAssetFile (que ya creó el slot de BINARY asset).
+//
+// Flujo capturado de studio.beatstars.com:
+//   1. POST /s3/multipart                      → { uploadId, key }
+//   2. GET  /s3/multipart/{uploadId}/{N}?key=… → { url } (presigned PUT)
+//   3. PUT  <presignedUrl>                     → captura ETag
+//   4. POST /s3/multipart/{uploadId}/complete?key=… body { parts }
+export const upload_stem_to_beatstars_multipart = async (params: {
+  token: string,
+  member_id: string,
+  asset_id: string,
+  filename: string,
+  file_buffer: Buffer,
+}): Promise<void> => {
+  const { token, member_id, asset_id, filename, file_buffer } = params
+  const CHUNK_SIZE = 5 * 1024 * 1024 // 5 MB (mínimo S3 multipart, salvo última)
+
+  const auth_headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+
+  // 1) Init multipart upload
+  const init_res = await fetch('https://uppy-v4.beatstars.net/s3/multipart', {
+    method: 'POST',
+    headers: auth_headers,
+    body: JSON.stringify({
+      filename,
+      type: 'application/zip',
+      metadata: {
+        'asset-id': asset_id,
+        name: filename,
+        type: 'BINARY',
+        'content-type': 'application/zip',
+        version: '2',
+        user: member_id,
+        env: 'prod',
+      },
+    }),
+  })
+  if (init_res.status !== 200) {
+    api_error500(`stems multipart init failed (${init_res.status}): ${await init_res.text()}`)
+  }
+  const init_body: { uploadId: string; key: string } = await init_res.json()
+  const { uploadId, key } = init_body
+  const encoded_key = encodeURIComponent(key)
+
+  // 2-3) Subir cada chunk con presigned PUT
+  const total = Math.ceil(file_buffer.length / CHUNK_SIZE)
+  const parts: { PartNumber: number; ETag: string }[] = []
+  for (let i = 0; i < total; i++) {
+    const part_number = i + 1
+    const chunk = file_buffer.subarray(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
+
+    const presign_res = await fetch(
+      `https://uppy-v4.beatstars.net/s3/multipart/${uploadId}/${part_number}?key=${encoded_key}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    if (presign_res.status !== 200) {
+      api_error500(`stems multipart presign part ${part_number} failed (${presign_res.status}): ${await presign_res.text()}`)
+    }
+    const presign_body: { url: string } = await presign_res.json()
+
+    const put_res = await fetch(presign_body.url, {
+      method: 'PUT',
+      body: new Blob([new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength) as unknown as BlobPart]),
+    })
+    if (put_res.status !== 200) {
+      api_error500(`stems multipart PUT part ${part_number} failed (${put_res.status})`)
+    }
+    const etag = put_res.headers.get('ETag') ?? put_res.headers.get('etag')
+    if (!etag) api_error500(`stems multipart PUT part ${part_number} missing ETag header`)
+    parts.push({ PartNumber: part_number, ETag: etag })
+  }
+
+  // 4) Complete
+  const complete_res = await fetch(
+    `https://uppy-v4.beatstars.net/s3/multipart/${uploadId}/complete?key=${encoded_key}`,
+    {
+      method: 'POST',
+      headers: auth_headers,
+      body: JSON.stringify({ parts }),
+    },
+  )
+  if (complete_res.status !== 200) {
+    api_error500(`stems multipart complete failed (${complete_res.status}): ${await complete_res.text()}`)
+  }
+}
+
 export const get_bs_audio_by_id = async (
   id_profile: Profile['id'],
   bs_id_asset: DbAsset['beatstars_id']

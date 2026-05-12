@@ -28,7 +28,7 @@ profiles_router.get('/',
       include: { profile_connections: true }
     })
 
-    const profiles = db_profiles.map(p => db_profile_to_profile(p))
+    const profiles = await Promise.all(db_profiles.map(p => db_profile_to_profile(p)))
     res.json(profiles)
   })
 )
@@ -54,7 +54,7 @@ profiles_router.post('/',
       include: { profile_connections: true }
     })
 
-    res.status(201).json(db_profile_to_profile(db_profile))
+    res.status(201).json(await db_profile_to_profile(db_profile))
   })
 )
 
@@ -90,7 +90,7 @@ profiles_router.patch('/:id',
       include: { profile_connections: true }
     })
 
-    res.json(db_profile_to_profile(updated))
+    res.json(await db_profile_to_profile(updated))
   })
 )
 
@@ -176,7 +176,7 @@ profiles_router.post('/:id/connections',
       include: { profile_connections: true }
     })
 
-    res.status(201).json(db_profile_to_profile(profile!))
+    res.status(201).json(await db_profile_to_profile(profile!))
   })
 )
 
@@ -266,7 +266,7 @@ profiles_router.patch('/:id/connections/:platform',
       include: { profile_connections: true }
     })
 
-    res.json(db_profile_to_profile(profile!))
+    res.json(await db_profile_to_profile(profile!))
   })
 )
 

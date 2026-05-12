@@ -61,6 +61,7 @@ tracks_router.post('/',
       const name: string | null = req.body.name ?? null
       const id_beat: string | null = req.body.id_beat ?? null
       const id_thumbnail: string | null = req.body.id_thumbnail ?? null
+      const id_stem: string | null = req.body.id_stem ?? null
       const publish_at: Date | null = req.body.publish_at
         ? new Date(req.body.publish_at)
         : null
@@ -102,6 +103,15 @@ tracks_router.post('/',
         }
       }
 
+      if (id_stem !== null) {
+        const stem = await db.asset.findUnique({
+          where: { id: id_stem }
+        })
+        if (stem === null) {
+          return api_error404('Stem not found')
+        }
+      }
+
 
       const publish_date = publish_at === null ? null : new Date(publish_at)
       if (publish_date === null || (
@@ -123,17 +133,19 @@ tracks_router.post('/',
           name,
           id_beat,
           id_thumbnail,
+          id_stem,
           publish_at: publish_date,
           yt_url: yt_url ?? null,
           ...(bpm !== null && { bpm }),
           ...(musical_key !== null && { musical_key }),
-        } as any
+        }
       })
 
       const track = await db_track_to_track({
         ...created_track,
         thumbnail: null,
         beat: null,
+        stem: null,
       })
       res.status(201).json(track)
     }
@@ -207,6 +219,22 @@ tracks_router.patch('/:id',
         updateData.id_thumbnail = req.body.id_thumbnail
       }
 
+      if ('id_stem' in req.body) {
+        if (req.body.id_stem === null) {
+          updateData.id_stem = null
+        } else if (typeof req.body.id_stem === 'string') {
+          const stem = await db.asset.findUnique({
+            where: { id: req.body.id_stem }
+          })
+          if (stem === null) {
+            return api_error404('Stem not found')
+          }
+          updateData.id_stem = req.body.id_stem
+        } else {
+          return api_error400('Invalid id_stem')
+        }
+      }
+
       if ('bpm' in req.body) {
         if (req.body.bpm !== null && typeof req.body.bpm !== 'string') {
           return api_error400('Invalid bpm')
@@ -268,6 +296,15 @@ tracks_router.delete('/:id',
         console.log('Beat deleted from S3 on track delete:', track_to_delete.beat.s3_key);
       } catch (deleteErr) {
         console.error('Error deleting beat from S3 on track delete:', deleteErr);
+      }
+    }
+
+    if (track_to_delete.stem?.s3_key) {
+      try {
+        await deleteFileFromS3(track_to_delete.stem.s3_key);
+        console.log('Stem deleted from S3 on track delete:', track_to_delete.stem.s3_key);
+      } catch (deleteErr) {
+        console.error('Error deleting stem from S3 on track delete:', deleteErr);
       }
     }
 

@@ -31,7 +31,7 @@ user_router.get('/info',
       created_at: user.created_at ?? new Date(),
       last_publish_at: lastTrack?.publish_at ?? null,
       settings: user.settings as Settings,
-      profiles: db_profiles.map(p => db_profile_to_profile(p)),
+      profiles: await Promise.all(db_profiles.map(p => db_profile_to_profile(p))),
     }
 
     res.json(userInfo)

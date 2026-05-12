@@ -29,6 +29,7 @@ export type Track = {
   name: string;
   beat: Asset | null,
   thumbnail: Asset | null;
+  stem: Asset | null;
   yt_url: string | null;
   beatstars_url: string | null;
   publish_at: Date;
@@ -53,6 +54,7 @@ export type BeatstarsMeta = {
   name_suffix?: string;
   default_bpm?: number;
   default_key?: string;
+  stems_available: boolean;
 }
 
 export type ProfileConnection = {

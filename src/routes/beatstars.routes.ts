@@ -5,7 +5,7 @@ import { api_error400, api_error403, api_error404, api_error500 } from '../error
 import { downloadFileFromS3 } from "../aws";
 import { db, track_include } from '../db'
 import { db_asset_to_asset, db_track_to_track } from '../mappers';
-import { get_beatstars_token } from '../api/beatstars-api';
+import { get_beatstars_token, get_bs_member_id, upload_stem_to_beatstars_multipart } from '../api/beatstars-api';
 import { ASSET_TYPE, PLATFORMS } from '../constants'
 import { BeatstarsMeta } from '../types/types';
 import { DbTrack } from '../types/db_types';
@@ -38,15 +38,23 @@ bs_router.post(
 
     const token = await get_beatstars_token(db_asset.id_profile);
 
-    const beatstars_slug = beatstarsSlug(db_asset.name)
+    const is_stem = db_asset.type === ASSET_TYPE.STEM
+    const beatstars_slug = is_stem
+      // BS exige extensión .zip en el filename para que el bundle reconozca el binario
+      ? `${beatstarsSlug(db_asset.name.replace(/\.zip$/i, ''))}.zip`
+      : beatstarsSlug(db_asset.name)
 
     const file = await downloadFileFromS3(db_asset.s3_key)
 
-    // Recortar thumbnail a 1:1: usa crop configurado o crop centrado automático
+    // Recortar thumbnail a 1:1 (imagen estática). Stems se suben tal cual via multipart.
     let uploadBuffer: Buffer = file;
+    let uploadMimetype = is_stem
+      ? 'application/zip'
+      : (db_asset.mimetype ?? 'image/png')
     if (db_asset.type === ASSET_TYPE.THUMBNAIL) {
       const crop = db_asset.crop_data as { x: number; y: number; w: number; h: number } | null
       uploadBuffer = await apply_crop_to_buffer(file, crop ?? undefined)
+      uploadMimetype = 'image/png'
     }
 
     /* --------------------------------------------------
@@ -66,7 +74,7 @@ bs_router.post(
           variables: {
             file: {
               fileName: beatstars_slug,
-              contentType: db_asset.mimetype
+              contentType: uploadMimetype
             }
           },
           query: `
@@ -96,14 +104,33 @@ bs_router.post(
        2) UPLOAD TO BEATSTARS S3
     -------------------------------------------------- */
 
-    // Prepare BeatStars upload params
+    if (is_stem) {
+      // Stems usan multipart de uppy-v4 (BINARY assets > 5MB)
+      const member_id = await get_bs_member_id(token)
+      await upload_stem_to_beatstars_multipart({
+        token,
+        member_id,
+        asset_id: bs_asset.id,
+        filename: beatstars_slug,
+        file_buffer: uploadBuffer,
+      })
+
+      const updated_asset = await db.asset.update({
+        where: { id: id_asset },
+        data: { beatstars_id: bs_asset.id }
+      });
+      const asset = await db_asset_to_asset(updated_asset)
+      return res.json(asset);
+    }
+
+    // Beat/thumbnail: single POST a /s3/params + form a S3
     const params = new URLSearchParams({
       filename: beatstars_slug,
       type: bs_asset.file.type,
       "metadata[asset-id]": bs_asset.id,
       "metadata[name]": beatstars_slug,
       "metadata[type]": bs_asset.file.type,
-      "metadata[content-type]": db_asset.mimetype ?? 'image/png', // TODO: make mandatory field in db
+      "metadata[content-type]": uploadMimetype,
       "metadata[version]": "2",
       "metadata[env]": "prod"
     });
@@ -125,7 +152,7 @@ bs_router.post(
     Object.entries(fields).forEach(([key, value]) => {
       form.append(key, value as string);
     });
-    const blob = new Blob([uploadBuffer as unknown as BlobPart], { type: db_asset.mimetype ?? 'image/png' });
+    const blob = new Blob([uploadBuffer as unknown as BlobPart], { type: uploadMimetype });
     form.append("file", blob, fields["x-amz-meta-name"]);
 
     // Upload to BeatStars
@@ -316,6 +343,38 @@ bs_router.post('/publish',
 
       if (attach_thumbnail_response.status !== 200) {
         return bs_error('attachArtwork failed', { http_status: attach_thumbnail_response.status, body: await extra_data_from_response(attach_thumbnail_response) })
+      }
+
+      // Stem es opcional: solo se adjunta si el track tiene id_stem y el asset ya
+      // subió a BS. operationName es `attachStems`; el campo mutación se llama
+      // `attachStemsFile` y devuelve un string ("Ok") en lugar de booleano.
+      if (track.id_stem) {
+        const stem_asset = await db.asset.findUnique({ where: { id: track.id_stem } })
+        if (stem_asset?.beatstars_id) {
+          const attach_stems_response = await beatstarsRequest(
+            "https://core.prod.beatstars.net/studio/graphql?op=attachStems",
+            {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                operationName: "attachStems",
+                variables: { id: beatstars_id_track, assetId: stem_asset.beatstars_id },
+                query: "mutation attachStems($id: String!, $assetId: String!) {\n  attachStemsFile(id: $id, assetId: $assetId)\n}",
+              }),
+            },
+          )
+          if (attach_stems_response.status !== 200) {
+            return bs_error('attachStems failed', {
+              http_status: attach_stems_response.status,
+              body: await extra_data_from_response(attach_stems_response),
+            })
+          }
+          const attach_stems_body = await attach_stems_response.json()
+          const stems_gql_errors = checkGraphQLErrors(attach_stems_body)
+          if (stems_gql_errors.hasErrors) {
+            return bs_error('attachStems GraphQL errors', { gql_errors: stems_gql_errors.messages })
+          }
+        }
       }
 
 
