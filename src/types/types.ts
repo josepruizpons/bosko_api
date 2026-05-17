@@ -20,6 +20,10 @@ export type Asset = {
   s3_uploaded: boolean;
   bs_uploaded: boolean;
   crop?: CropData;
+  frame_time?: number;
+  duration?: number;
+  source?: 'upload' | 'video_frame';
+  mimetype?: string | null;
 }
 
 export type Track = {
@@ -30,6 +34,7 @@ export type Track = {
   beat: Asset | null,
   thumbnail: Asset | null;
   stem: Asset | null;
+  video_loop: Asset | null;
   yt_url: string | null;
   beatstars_url: string | null;
   publish_at: Date;

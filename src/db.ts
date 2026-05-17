@@ -13,10 +13,15 @@ const asset_select = {
   s3_key: true,
   beatstars_id: true,
   crop_data: true,
+  mimetype: true,
+  frame_time: true,
+  duration: true,
+  source: true,
 } as const
 
 export const track_include = {
   beat: { select: asset_select },
   thumbnail: { select: asset_select },
   stem: { select: asset_select },
+  video_loop: { select: asset_select },
 } as const

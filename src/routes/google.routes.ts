@@ -3,9 +3,10 @@ import { google } from 'googleapis';
 import type { GaxiosResponseWithHTTP2 } from 'googleapis-common';
 import type { youtube_v3 } from 'googleapis';
 import { api_error400, api_error403, api_error404, api_error429, api_error500 } from '../errors';
-import { apply_crop_to_buffer, asyncHandler, buffer_to_stream, generate_video, get_current_user, get_profile, is_youtube_quota_error, youtubeUrl } from '../utils';
+import { apply_crop_to_buffer, asyncHandler, buffer_to_stream, generate_looped_video, generate_video, get_current_user, get_profile, is_youtube_quota_error, youtubeUrl } from '../utils';
 import { get_google_client } from '../google_auth';
 import { db, track_include } from '../db'
+import { Prisma } from '../generated/prisma/client'
 import { deleteFileFromS3, downloadFileFromS3, invokeVideoLambda, uploadBufferToS3 } from '../aws';
 import { db_track_to_track } from '../mappers';
 import { PLATFORMS, PROD_HOSTNAME } from '../constants';
@@ -135,16 +136,47 @@ If you want to make profit with your music (upload your song to streaming servic
 
     const isProduction = process.env.NODE_ENV === 'production';
 
+    // Si el track tiene un video_loop, generamos el vídeo loopeando ese clip con el beat.
+    const videoLoopAsset = track.id_video_loop
+      ? await db.asset.findUnique({ where: { id: track.id_video_loop } })
+      : null
+
     // Leer setting yt_crop_thumbnail del perfil
     const profile_for_settings = await db.profiles.findUnique({ where: { id: track.id_profile } })
     const profile_settings = (profile_for_settings?.settings ?? {}) as Record<string, string>
     const yt_crop_thumbnail = profile_settings.yt_crop_thumbnail === 'true'
 
+    if (videoLoopAsset?.s3_key) {
+      // -------- Pipeline con VIDEO/GIF de fondo + audio (loop) --------
+      if (true) {
+        console.log('Using Lambda for looped video generation in production')
+        videoS3Key = await invokeVideoLambda(
+          beatAsset.s3_key,
+          videoLoopAsset.s3_key,
+          track_title,
+          { is_video: true },
+        )
+        console.log('Lambda returned S3 key:', videoS3Key)
+        videoBuffer = await downloadFileFromS3(videoS3Key)
+        console.log('Looped video downloaded from S3: ' + track_title)
+      } else {
+        console.log('Development: generating looped video locally')
+        const audioBuffer = await downloadFileFromS3(beatAsset.s3_key)
+        const loopBuffer = await downloadFileFromS3(videoLoopAsset.s3_key)
+        videoBuffer = await generate_looped_video(
+          audioBuffer,
+          loopBuffer,
+          videoLoopAsset.mimetype ?? 'video/mp4',
+        )
+        console.log('Looped video generated locally: ' + track_title)
+      }
+    }
+
     // Determinar la S3 key del thumbnail a usar (original o cropeada temporalmente)
     let thumb_s3_key_for_video = thumbnailAsset.s3_key
     let temp_cropped_s3_key: string | undefined
 
-    if (yt_crop_thumbnail) {
+    if (!videoLoopAsset && yt_crop_thumbnail) {
       const thumbBuffer = await downloadFileFromS3(thumbnailAsset.s3_key)
       const crop = thumbnailAsset.crop_data as { x: number; y: number; w: number; h: number } | null
       const croppedBuffer = await apply_crop_to_buffer(thumbBuffer, crop ?? undefined)
@@ -161,36 +193,56 @@ If you want to make profit with your music (upload your song to streaming servic
       }
     }
 
-    if (isProduction) {
-      // Producción: usar Lambda para generar el vídeo
-      console.log('Using Lambda for video generation in production');
+    if (!videoLoopAsset) {
+      if (isProduction) {
+        // Producción: usar Lambda para generar el vídeo
+        console.log('Using Lambda for video generation in production');
 
-      videoS3Key = await invokeVideoLambda(
-        beatAsset.s3_key,
-        thumb_s3_key_for_video,
-        track_title
-      );
+        videoS3Key = await invokeVideoLambda(
+          beatAsset.s3_key,
+          thumb_s3_key_for_video,
+          track_title
+        );
 
-      console.log('Lambda returned S3 key:', videoS3Key);
+        console.log('Lambda returned S3 key:', videoS3Key);
 
-      videoBuffer = await downloadFileFromS3(videoS3Key);
+        videoBuffer = await downloadFileFromS3(videoS3Key);
 
-      console.log('Video downloaded from S3: ' + track_title);
-    } else if (!videoBuffer) {
-      // Desarrollo sin crop YT: descargar de S3 y generar vídeo localmente
-      console.log('Development: Downloading assets from S3 for local video generation');
+        console.log('Video downloaded from S3: ' + track_title);
+      } else if (!videoBuffer) {
+        // Desarrollo sin crop YT: descargar de S3 y generar vídeo localmente
+        console.log('Development: Downloading assets from S3 for local video generation');
 
-      const audioBuffer = await downloadFileFromS3(beatAsset.s3_key);
-      const thumbBuffer = await downloadFileFromS3(thumbnailAsset.s3_key);
+        const audioBuffer = await downloadFileFromS3(beatAsset.s3_key);
+        const thumbBuffer = await downloadFileFromS3(thumbnailAsset.s3_key);
 
-      videoBuffer = await generate_video(audioBuffer, thumbBuffer)
-      console.log('Video generated locally: ' + track_title)
+        videoBuffer = await generate_video(audioBuffer, thumbBuffer)
+        console.log('Video generated locally: ' + track_title)
+      }
+    }
+
+    // Preparar el buffer del thumbnail para YouTube (siempre necesario, también con video_loop).
+    // Si el perfil tiene yt_crop_thumbnail activo, aplicar el crop antes de subirlo.
+    let yt_thumb_buffer: Buffer
+    let yt_thumb_mime: string
+    if (!videoLoopAsset && yt_crop_thumbnail && temp_cropped_s3_key) {
+      // Reutilizar el buffer ya cropeado que se subió a S3 para Lambda.
+      yt_thumb_buffer = await downloadFileFromS3(temp_cropped_s3_key)
+      yt_thumb_mime = 'image/png'
+    } else if (yt_crop_thumbnail) {
+      const thumbBuffer = await downloadFileFromS3(thumbnailAsset.s3_key)
+      const crop = thumbnailAsset.crop_data as { x: number; y: number; w: number; h: number } | null
+      yt_thumb_buffer = await apply_crop_to_buffer(thumbBuffer, crop ?? undefined)
+      yt_thumb_mime = 'image/png'
+    } else {
+      yt_thumb_buffer = await downloadFileFromS3(thumbnailAsset.s3_key)
+      yt_thumb_mime = thumbnailAsset.mimetype ?? 'image/jpeg'
     }
 
     // Subir a YouTube (capturar errores de quota)
+    const youtube = google.youtube({ version: 'v3', auth: google_client })
     let yt_response;
     try {
-      const youtube = google.youtube({ version: 'v3', auth: google_client })
       yt_response = await youtube.videos.insert({
         part: ['snippet', 'status'],
         requestBody: {
@@ -217,6 +269,31 @@ If you want to make profit with your music (upload your song to streaming servic
       return api_error500('YT id not generated')
     }
 
+    // Asignar el artwork como miniatura personalizada del vídeo en YouTube.
+    // Requiere que el canal esté verificado; si falla, se loguea pero no se aborta la subida.
+    console.log(`Setting YT thumbnail for ${yt_id}: ${yt_thumb_buffer.length} bytes, mime=${yt_thumb_mime}`)
+    try {
+      await youtube.thumbnails.set({
+        videoId: yt_id,
+        media: {
+          mimeType: yt_thumb_mime,
+          body: buffer_to_stream(yt_thumb_buffer),
+        },
+      })
+      console.log('YouTube thumbnail set for video:', yt_id)
+    } catch (thumbErr: any) {
+      const errMsg = thumbErr?.message ?? String(thumbErr)
+      const errDetails = thumbErr?.response?.data ?? thumbErr?.errors ?? null
+      console.error('Failed to set YouTube thumbnail:', errMsg, errDetails)
+    }
+
+    if (yt_crop_thumbnail) {
+      await db.asset.update({
+        where: { id: track.id_thumbnail },
+        data: { crop_data: Prisma.DbNull },
+      })
+    }
+
     const db_track = await db.track.update({
       where: { id: track.id },
       data: { yt_url: youtubeUrl(yt_id) },
@@ -239,6 +316,15 @@ If you want to make profit with your music (upload your song to streaming servic
         console.log('Thumbnail deleted from S3:', thumbnailAsset.s3_key);
       } catch (deleteErr) {
         console.error('Error deleting thumbnail from S3:', deleteErr);
+      }
+    }
+
+    if (videoLoopAsset?.s3_key) {
+      try {
+        await deleteFileFromS3(videoLoopAsset.s3_key);
+        console.log('Video loop deleted from S3:', videoLoopAsset.s3_key);
+      } catch (deleteErr) {
+        console.error('Error deleting video loop from S3:', deleteErr);
       }
     }
 

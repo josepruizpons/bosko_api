@@ -132,6 +132,62 @@ export async function generate_video(audioBuffer: Buffer, imageBuffer: Buffer): 
 
   return buffer
 }
+
+function ext_for_video_mimetype(mimetype: string): string {
+  if (mimetype === 'video/mp4') return 'mp4'
+  if (mimetype === 'video/webm') return 'webm'
+  if (mimetype === 'video/quicktime') return 'mov'
+  if (mimetype === 'image/gif') return 'gif'
+  return 'mp4'
+}
+
+export async function generate_looped_video(
+  audioBuffer: Buffer,
+  videoBuffer: Buffer,
+  videoMimetype: string,
+): Promise<Buffer> {
+  const tempDir = 'temp'
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir)
+
+  const stamp = Date.now()
+  const audioPath = path.join(tempDir, `audio-${stamp}.mp3`)
+  const videoPath = path.join(tempDir, `loop-${stamp}.${ext_for_video_mimetype(videoMimetype)}`)
+  const outputPath = path.join(tempDir, `video-${stamp}.mp4`)
+
+  fs.writeFileSync(audioPath, audioBuffer)
+  fs.writeFileSync(videoPath, videoBuffer)
+
+  await new Promise<void>((resolve, reject) => {
+    ffmpeg()
+      .input(videoPath)
+      .inputOptions(['-stream_loop -1'])
+      .input(audioPath)
+      .videoCodec('libx264')
+      .audioCodec('aac')
+      .audioBitrate('192k')
+      .outputOptions([
+        '-shortest',
+        '-map 0:v:0',
+        '-map 1:a:0',
+        '-pix_fmt yuv420p',
+        '-preset veryfast',
+        '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black',
+        '-r', '30',
+      ])
+      .save(outputPath)
+      .on('end', () => resolve())
+      .on('error', (err) => reject(err));
+  })
+
+  const buffer = fs.readFileSync(outputPath)
+
+  fs.unlinkSync(audioPath)
+  fs.unlinkSync(videoPath)
+  fs.unlinkSync(outputPath)
+
+  return buffer
+}
+
 export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export const randomSleep = (min = 500, max = 2500) =>

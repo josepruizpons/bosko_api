@@ -5,6 +5,7 @@ import { db, track_include } from '../db'
 import { DbTrack } from '../types/db_types';
 import { db_track_to_track } from '../mappers';
 import { deleteFileFromS3 } from '../aws';
+import { ASSET_TYPE } from '../constants';
 import bs_key_notes_data from '../api/bs_key_notes.json';
 
 const VALID_KEY_NOTE_KEYS = new Set(bs_key_notes_data.keyNotes.map((k: { key: string }) => k.key));
@@ -62,6 +63,7 @@ tracks_router.post('/',
       const id_beat: string | null = req.body.id_beat ?? null
       const id_thumbnail: string | null = req.body.id_thumbnail ?? null
       const id_stem: string | null = req.body.id_stem ?? null
+      const id_video_loop: string | null = req.body.id_video_loop ?? null
       const publish_at: Date | null = req.body.publish_at
         ? new Date(req.body.publish_at)
         : null
@@ -112,6 +114,18 @@ tracks_router.post('/',
         }
       }
 
+      if (id_video_loop !== null) {
+        const video_loop = await db.asset.findUnique({
+          where: { id: id_video_loop }
+        })
+        if (video_loop === null) {
+          return api_error404('Video loop not found')
+        }
+        if (video_loop.type !== ASSET_TYPE.VIDEO_LOOP) {
+          return api_error400('id_video_loop must reference a VIDEO_LOOP asset')
+        }
+      }
+
 
       const publish_date = publish_at === null ? null : new Date(publish_at)
       if (publish_date === null || (
@@ -134,6 +148,7 @@ tracks_router.post('/',
           id_beat,
           id_thumbnail,
           id_stem,
+          id_video_loop,
           publish_at: publish_date,
           yt_url: yt_url ?? null,
           ...(bpm !== null && { bpm }),
@@ -146,6 +161,7 @@ tracks_router.post('/',
         thumbnail: null,
         beat: null,
         stem: null,
+        video_loop: null,
       })
       res.status(201).json(track)
     }
@@ -207,16 +223,19 @@ tracks_router.patch('/:id',
       }
 
       if ('id_thumbnail' in req.body) {
-        if (typeof req.body.id_thumbnail !== 'string') {
+        if (req.body.id_thumbnail === null) {
+          updateData.id_thumbnail = null
+        } else if (typeof req.body.id_thumbnail === 'string') {
+          const thumbnail = await db.asset.findUnique({
+            where: { id: req.body.id_thumbnail }
+          })
+          if (thumbnail === null) {
+            return api_error404('Thumbnail not found')
+          }
+          updateData.id_thumbnail = req.body.id_thumbnail
+        } else {
           return api_error400('Invalid id_thumbnail')
         }
-        const thumbnail = await db.asset.findUnique({
-          where: { id: req.body.id_thumbnail }
-        })
-        if (thumbnail === null) {
-          return api_error404('Thumbnail not found')
-        }
-        updateData.id_thumbnail = req.body.id_thumbnail
       }
 
       if ('id_stem' in req.body) {
@@ -232,6 +251,25 @@ tracks_router.patch('/:id',
           updateData.id_stem = req.body.id_stem
         } else {
           return api_error400('Invalid id_stem')
+        }
+      }
+
+      if ('id_video_loop' in req.body) {
+        if (req.body.id_video_loop === null) {
+          updateData.id_video_loop = null
+        } else if (typeof req.body.id_video_loop === 'string') {
+          const video_loop = await db.asset.findUnique({
+            where: { id: req.body.id_video_loop }
+          })
+          if (video_loop === null) {
+            return api_error404('Video loop not found')
+          }
+          if (video_loop.type !== ASSET_TYPE.VIDEO_LOOP) {
+            return api_error400('id_video_loop must reference a VIDEO_LOOP asset')
+          }
+          updateData.id_video_loop = req.body.id_video_loop
+        } else {
+          return api_error400('Invalid id_video_loop')
         }
       }
 
@@ -314,6 +352,15 @@ tracks_router.delete('/:id',
         console.log('Thumbnail deleted from S3 on track delete:', track_to_delete.thumbnail.s3_key);
       } catch (deleteErr) {
         console.error('Error deleting thumbnail from S3 on track delete:', deleteErr);
+      }
+    }
+
+    if (track_to_delete.video_loop?.s3_key) {
+      try {
+        await deleteFileFromS3(track_to_delete.video_loop.s3_key);
+        console.log('Video loop deleted from S3 on track delete:', track_to_delete.video_loop.s3_key);
+      } catch (deleteErr) {
+        console.error('Error deleting video loop from S3 on track delete:', deleteErr);
       }
     }
 
