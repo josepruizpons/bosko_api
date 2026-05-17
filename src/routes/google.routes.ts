@@ -161,12 +161,12 @@ If you want to make profit with your music (upload your song to streaming servic
         console.log('Looped video downloaded from S3: ' + track_title)
       } else {
         console.log('Development: generating looped video locally')
-        const audioBuffer = await downloadFileFromS3(beatAsset.s3_key)
-        const loopBuffer = await downloadFileFromS3(videoLoopAsset.s3_key)
+        const audioBuffer = await downloadFileFromS3(beatAsset!.s3_key)
+        const loopBuffer = await downloadFileFromS3(videoLoopAsset!.s3_key)
         videoBuffer = await generate_looped_video(
           audioBuffer,
           loopBuffer,
-          videoLoopAsset.mimetype ?? 'video/mp4',
+          videoLoopAsset!.mimetype ?? 'video/mp4',
         )
         console.log('Looped video generated locally: ' + track_title)
       }
