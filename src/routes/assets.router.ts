@@ -2,6 +2,10 @@ import express from 'express'
 import multer from 'multer';
 import sharp from 'sharp';
 import ffmpeg from 'fluent-ffmpeg';
+import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
+import ffprobeInstaller from '@ffprobe-installer/ffprobe';
+ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+ffmpeg.setFfprobePath(ffprobeInstaller.path);
 import { asyncHandler, generate_id, get_current_user, get_profile } from "../utils";
 import { api_error400, api_error403, api_error404 } from '../errors';
 import { uploadFileToS3, streamFileFromS3 } from "../aws";
