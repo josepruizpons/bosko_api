@@ -156,7 +156,12 @@ const lambdaClient = new LambdaClient({
   },
 });
 
-export async function invokeVideoLambda(audioS3Key: string, imageS3Key: string, fileName: string): Promise<string> {
+export async function invokeVideoLambda(
+  audioS3Key: string,
+  imageOrVideoS3Key: string,
+  fileName: string,
+  opts?: { is_video?: boolean },
+): Promise<string> {
   const functionName = process.env.AWS_LAMBDA_FUNCTION_NAME || 'bosko-video';
 
   const command = new InvokeCommand({
@@ -164,8 +169,9 @@ export async function invokeVideoLambda(audioS3Key: string, imageS3Key: string, 
     InvocationType: 'RequestResponse',
     Payload: JSON.stringify({
       audioS3Key,
-      imageS3Key,
+      imageS3Key: imageOrVideoS3Key,
       fileName,
+      is_video: opts?.is_video ?? false,
     }),
   });
 
