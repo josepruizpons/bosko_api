@@ -141,10 +141,11 @@ If you want to make profit with your music (upload your song to streaming servic
       ? await db.asset.findUnique({ where: { id: track.id_video_loop } })
       : null
 
-    // Leer setting yt_crop_thumbnail del perfil
+    // Leer settings del perfil
     const profile_for_settings = await db.profiles.findUnique({ where: { id: track.id_profile } })
     const profile_settings = (profile_for_settings?.settings ?? {}) as Record<string, string>
     const yt_crop_thumbnail = profile_settings.yt_crop_thumbnail === 'true'
+    const yt_premiere = profile_settings.yt_premiere === 'true'
 
     if (videoLoopAsset?.s3_key) {
       // -------- Pipeline con VIDEO/GIF de fondo + audio (loop) --------
@@ -240,6 +241,7 @@ If you want to make profit with your music (upload your song to streaming servic
     }
 
     // Subir a YouTube (capturar errores de quota)
+    const publish_at_iso = publish_date?.toISOString() ?? null
     const youtube = google.youtube({ version: 'v3', auth: google_client })
     let yt_response;
     try {
@@ -252,7 +254,9 @@ If you want to make profit with your music (upload your song to streaming servic
           },
           status: {
             privacyStatus: 'private',
-            publishAt: publish_date?.toISOString() ?? null
+            publishAt: publish_at_iso,
+            // Premieres require non-kids content.
+            selfDeclaredMadeForKids: yt_premiere ? false : true,
           },
         },
         media: { body: buffer_to_stream(videoBuffer!) },
@@ -267,6 +271,27 @@ If you want to make profit with your music (upload your song to streaming servic
     const yt_id = yt_response.data.id ?? null
     if (!yt_id) {
       return api_error500('YT id not generated')
+    }
+
+    if (yt_premiere && publish_at_iso) {
+      try {
+        await youtube.videos.update({
+          part: ['status', 'liveStreamingDetails'],
+          requestBody: {
+            id: yt_id,
+            status: {
+              privacyStatus: 'public',
+              publishAt: publish_at_iso,
+              selfDeclaredMadeForKids: false,
+            },
+            liveStreamingDetails: {
+              scheduledStartTime: publish_at_iso,
+            },
+          },
+        })
+      } catch (premiereErr: any) {
+        console.error('Failed to mark video as Premiere:', premiereErr?.message ?? premiereErr)
+      }
     }
 
     // Asignar el artwork como miniatura personalizada del vídeo en YouTube.

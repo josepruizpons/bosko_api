@@ -13,6 +13,8 @@ import { db } from "../db"
 import { auth_router } from "./auth.routes";
 import { user_router } from "./user.routes";
 import { profiles_router, bs_connect_token_handler } from "./profiles.router";
+import { webhooks_router } from "./webhooks.routes";
+import { waitlist_router } from "./waitlist.routes";
 import { validate_session } from "../middlewares/session.middleware";
 import { api_error400, api_error500 } from "../errors";
 import { PLATFORMS, PROD_HOSTNAME } from "../constants";
@@ -32,13 +34,19 @@ const allowedOrigins = process.env.NODE_ENV === "production"
   : [
     "http://localhost:5173",
     'http://localhost:5176',
+    'http://localhost:5180',
     "https://localhost:5173",
     "https://localhost:5174",
     'https://localhost:5176',
+    'https://localhost:5180',
     'https://studio.beatstars.com',
   ];
 
 app.use(cors({ origin: allowedOrigins, credentials: true }));
+
+// Webhooks need the raw body for HMAC verification, so mount them BEFORE express.json().
+app.use('/webhooks', webhooks_router)
+
 app.use(express.json());
 
 app.get("/health", async (_req, res) => {
@@ -52,20 +60,21 @@ if (!process.env.SESSION_SECRET) {
 }
 
 app.set('trust proxy', 1);
-app.use(
-  session({
-    name: 'bosko_session',
-    secret: process.env.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'lax',
-      maxAge: 1000 * 60 * 60 * 24 * 7,
-    },
-  })
-);
+
+export const session_middleware = session({
+  name: 'bosko_session',
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    maxAge: 1000 * 60 * 60 * 24 * 7,
+  },
+});
+
+app.use(session_middleware);
 
 // Ruta GET /google/auth_callback
 app.get('/google/auth_callback', async (req, res) => {
@@ -198,6 +207,9 @@ app.get('/google/auth_callback', async (req, res) => {
 
 
 app.use('/auth', auth_router)
+
+// Public waitlist endpoint — no auth, rate-limited per-IP
+app.use('/api/waitlist', waitlist_router)
 
 // Public BeatStars token endpoint — authenticated via one-time connect_token, not session
 app.post('/api/profiles/:id/connections/beatstars/token', express.json(), bs_connect_token_handler)

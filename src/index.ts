@@ -1,12 +1,16 @@
+import http from "http";
 import https from "https";
 import fs from "fs";
-import app from "./routes/app";
+import app, { session_middleware } from "./routes/app";
+import { init_sockets } from "./sockets";
 
 const PORT = process.env.PORT || 3000;
 
 if (process.env.NODE_ENV === "production") {
   // En producción usamos HTTP normal (Render ya maneja HTTPS)
-  app.listen(PORT, () => {
+  const server = http.createServer(app);
+  init_sockets(server, session_middleware);
+  server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
 } else {
@@ -14,7 +18,9 @@ if (process.env.NODE_ENV === "production") {
   const key = fs.readFileSync("localhost-key.pem");
   const cert = fs.readFileSync("localhost.pem");
 
-  https.createServer({ key, cert }, app).listen(PORT, () => {
+  const server = https.createServer({ key, cert }, app);
+  init_sockets(server, session_middleware);
+  server.listen(PORT, () => {
     console.log(`Server running on https://localhost:${PORT}`);
   });
 }

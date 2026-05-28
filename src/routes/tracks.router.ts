@@ -1,11 +1,13 @@
 import express from 'express'
+import crypto from 'crypto'
+import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda'
 import { asyncHandler, generate_id, get_current_user, get_profile } from "../utils";
-import { api_error400, api_error403, api_error404 } from '../errors';
+import { api_error400, api_error403, api_error404, api_error500 } from '../errors';
 import { db, track_include } from '../db'
 import { DbTrack } from '../types/db_types';
 import { db_track_to_track } from '../mappers';
 import { deleteFileFromS3 } from '../aws';
-import { ASSET_TYPE } from '../constants';
+import { ASSET_TYPE, PROD_HOSTNAME } from '../constants';
 import bs_key_notes_data from '../api/bs_key_notes.json';
 
 const VALID_KEY_NOTE_KEYS = new Set(bs_key_notes_data.keyNotes.map((k: { key: string }) => k.key));
@@ -29,6 +31,7 @@ tracks_router.get('/pending',
         where: {
           yt_url: null,
           id_profile,
+          archived_at: null,
         },
         include: track_include,
         orderBy: [
@@ -321,6 +324,16 @@ tracks_router.delete('/:id',
       return api_error404('Track not found')
     }
 
+    // Tracks ya publicados (yt_url != null) → soft delete (preservar para historial).
+    if (track_to_delete.yt_url) {
+      const archived = await db.track.update({
+        where: { id, id_user: user.id },
+        data: { archived_at: new Date() },
+        include: track_include,
+      })
+      return res.json(await db_track_to_track(archived))
+    }
+
     // Eliminar el track de la base de datos
     const deleted_track = await db.track.delete({
       where: { id, id_user: user.id },
@@ -365,5 +378,158 @@ tracks_router.delete('/:id',
     }
 
     res.json(await db_track_to_track(deleted_track))
+  })
+)
+
+// GET /api/tracks/history - List published (archived=false, yt_url != null) tracks for a profile
+tracks_router.get('/history',
+  asyncHandler(async (req, res) => {
+    const user = await get_current_user(req)
+    const id_profile = req.query.id_profile as string | undefined
+
+    if (!id_profile) {
+      return api_error400('Missing required query param: id_profile')
+    }
+
+    await get_profile(user.id, id_profile)
+
+    const db_tracks: DbTrack[] = await db.track.findMany({
+      where: {
+        id_profile,
+        id_user: user.id,
+        yt_url: { not: null },
+        archived_at: null,
+      },
+      include: track_include,
+      orderBy: [
+        { published_at: 'desc' },
+        { created_at: 'desc' },
+      ],
+    })
+
+    const tracks = await Promise.all(db_tracks.map(t => db_track_to_track(t)))
+    res.json(tracks)
+  })
+)
+
+const lambda_client = new LambdaClient({
+  region: process.env.AWS_REGION || 'eu-west-3',
+  credentials: {
+    accessKeyId: process.env.AWS_ID!,
+    secretAccessKey: process.env.AWS_SECRET_KEY!,
+  },
+})
+
+// POST /api/tracks/:id/publish - Trigger async publish via Lambda
+tracks_router.post('/:id/publish',
+  asyncHandler(async (req, res) => {
+    const user = await get_current_user(req)
+    const id = req.params.id as string
+
+    const track = await db.track.findUnique({
+      where: { id },
+      include: track_include,
+    })
+
+    if (!track) return api_error404('Track not found')
+    if (track.id_user !== user.id) return api_error403('You do not have permission to publish this track')
+    if (!track.id_profile) return api_error400('Track has no profile assigned')
+    if (track.yt_url) return api_error400('Track already published')
+
+    if (!track.id_beat) return api_error400('Track is missing beat')
+    if (!track.id_thumbnail && !track.id_video_loop) {
+      return api_error400('Track is missing thumbnail or video_loop')
+    }
+
+    if (track.publishing_started_at) {
+      // Already in progress — return current job idempotently
+      return res.status(202).json({
+        job_id: track.publishing_job_id,
+        id_track: track.id,
+        status: 'already_in_progress',
+      })
+    }
+
+    const secret = process.env.LAMBDA_WEBHOOK_SECRET
+    if (!secret) return api_error500('LAMBDA_WEBHOOK_SECRET not configured')
+
+    const function_name = process.env.AWS_LAMBDA_PUBLISH_FUNCTION_NAME || 'bosko-publish'
+
+    const job_id = crypto.randomUUID()
+    const callback_url = process.env.NODE_ENV === 'production'
+      ? `${PROD_HOSTNAME}/webhooks/lambda-event`
+      : `https://host.docker.internal:3000/webhooks/lambda-event`
+
+    // Read yt_crop_thumbnail option from profile settings
+    const profile_for_settings = await db.profiles.findUnique({ where: { id: track.id_profile } })
+    const profile_settings = (profile_for_settings?.settings ?? {}) as Record<string, string>
+    const yt_crop_thumbnail = profile_settings.yt_crop_thumbnail === 'true'
+
+    await db.track.update({
+      where: { id },
+      data: {
+        publishing_started_at: new Date(),
+        publishing_job_id: job_id,
+        error_message: null,
+        error_phase: null,
+        aborted_at: null,
+      },
+    })
+
+    const payload = {
+      job_id,
+      id_track: track.id,
+      id_user: user.id,
+      id_profile: track.id_profile,
+      callback_url,
+      callback_token: secret,
+      options: { yt_crop_thumbnail },
+    }
+
+    try {
+      await lambda_client.send(new InvokeCommand({
+        FunctionName: function_name,
+        InvocationType: 'Event',
+        Payload: JSON.stringify(payload),
+      }))
+    } catch (err) {
+      // Revert publishing flags on invocation failure
+      await db.track.update({
+        where: { id },
+        data: {
+          publishing_started_at: null,
+          publishing_job_id: null,
+          error_message: err instanceof Error ? err.message : 'Lambda invoke failed',
+          error_phase: 'invoke',
+        },
+      })
+      console.error('[publish] Lambda invoke failed:', err)
+      return api_error500('Failed to start publish job')
+    }
+
+    res.status(202).json({ job_id, id_track: track.id })
+  })
+)
+
+// POST /api/tracks/:id/publish/abort - Mark the job as aborted; Lambda checks between phases
+tracks_router.post('/:id/publish/abort',
+  asyncHandler(async (req, res) => {
+    const user = await get_current_user(req)
+    const id = req.params.id as string
+
+    const track = await db.track.findUnique({ where: { id } })
+    if (!track) return api_error404('Track not found')
+    if (track.id_user !== user.id) return api_error403('You do not have permission')
+
+    if (!track.publishing_started_at) {
+      return res.status(409).json({ error: 'no publish in progress' })
+    }
+
+    await db.track.update({
+      where: { id },
+      data: { aborted_at: new Date() },
+    })
+
+    res.status(204).send()
   })
 )

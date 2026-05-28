@@ -59,6 +59,7 @@ model asset {
   frame_time           Float?
   duration             Float?
   source               String?      @db.VarChar(20)
+  s3_deleted_at        DateTime?    @db.Timestamp(6)
   e_asset_type         e_asset_type @relation(fields: [type], references: [name], map: "asset_e_asset_type_fk")
   profiles             profiles?    @relation(fields: [id_profile], references: [id], onDelete: Cascade, map: "asset_profiles_fk")
   users                users?       @relation(fields: [id_user], references: [id], onDelete: Cascade, map: "asset_users_fk")
@@ -69,30 +70,38 @@ model asset {
 }
 
 model track {
-  id                 String    @id(map: "track_pk") @db.Char(11)
-  name               String    @db.VarChar
-  id_user            Int
-  id_beat            String?   @db.Char(11)
-  id_thumbnail       String?   @db.Char(11)
-  yt_url             String?   @db.VarChar
-  created_at         DateTime  @default(now()) @db.Timestamp(6)
-  beatstars_url      String?   @db.VarChar
-  publish_at         DateTime  @default(now()) @db.Timestamp(6)
-  beatstars_id_track String?   @db.VarChar
-  error_message      String?   @db.VarChar
-  id_profile         String?   @db.Char(11)
-  bpm                String?   @db.VarChar
-  musical_key        String?   @db.VarChar
-  tags               String[]  @default([])
-  genres             String[]  @default([])
-  id_stem            String?   @db.Char(11)
-  id_video_loop      String?   @db.Char(11)
-  beat               asset?    @relation("track_beat", fields: [id_beat], references: [id], onDelete: Cascade, map: "beat_fk")
-  stem               asset?    @relation("track_stem", fields: [id_stem], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "stem_fk")
-  thumbnail          asset?    @relation("track_thumbnail", fields: [id_thumbnail], references: [id], onDelete: Cascade, map: "thumnbnail_fk")
-  profiles           profiles? @relation(fields: [id_profile], references: [id], onDelete: Cascade, map: "track_profiles_fk")
-  user               users     @relation(fields: [id_user], references: [id], onDelete: Cascade, map: "track_users_fk")
-  video_loop         asset?    @relation("track_video_loop", fields: [id_video_loop], references: [id], onUpdate: NoAction, map: "video_loop_fk")
+  id                    String    @id(map: "track_pk") @db.Char(11)
+  name                  String    @db.VarChar
+  id_user               Int
+  id_beat               String?   @db.Char(11)
+  id_thumbnail          String?   @db.Char(11)
+  yt_url                String?   @db.VarChar
+  created_at            DateTime  @default(now()) @db.Timestamp(6)
+  beatstars_url         String?   @db.VarChar
+  publish_at            DateTime  @default(now()) @db.Timestamp(6)
+  beatstars_id_track    String?   @db.VarChar
+  error_message         String?   @db.VarChar
+  id_profile            String?   @db.Char(11)
+  bpm                   String?   @db.VarChar
+  musical_key           String?   @db.VarChar
+  tags                  String[]  @default([])
+  genres                String[]  @default([])
+  id_stem               String?   @db.Char(11)
+  id_video_loop         String?   @db.Char(11)
+  publishing_started_at DateTime? @db.Timestamp(6)
+  publishing_job_id     String?   @db.VarChar
+  published_at          DateTime? @db.Timestamp(6)
+  error_phase           String?   @db.VarChar
+  aborted_at            DateTime? @db.Timestamp(6)
+  archived_at           DateTime? @db.Timestamp(6)
+  beat                  asset?    @relation("track_beat", fields: [id_beat], references: [id], onDelete: Cascade, map: "beat_fk")
+  stem                  asset?    @relation("track_stem", fields: [id_stem], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "stem_fk")
+  thumbnail             asset?    @relation("track_thumbnail", fields: [id_thumbnail], references: [id], onDelete: Cascade, map: "thumnbnail_fk")
+  profiles              profiles? @relation(fields: [id_profile], references: [id], onDelete: Cascade, map: "track_profiles_fk")
+  user                  users     @relation(fields: [id_user], references: [id], onDelete: Cascade, map: "track_users_fk")
+  video_loop            asset?    @relation("track_video_loop", fields: [id_video_loop], references: [id], onUpdate: NoAction, map: "video_loop_fk")
+
+  @@index([id_profile, archived_at, published_at(sort: Desc)], map: "idx_track_history")
 }
 
 model profiles {
@@ -104,6 +113,16 @@ model profiles {
   profile_connections profile_connections[]
   users               users                 @relation(fields: [id_user], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "profiles_users_fk")
   track               track[]
+}
+
+model waitlist {
+  id         Int      @id @default(autoincrement())
+  email      String   @unique @db.VarChar(320)
+  source     String?  @db.VarChar(64)
+  locale     String?  @db.VarChar(8)
+  created_at DateTime @default(now()) @db.Timestamp(6)
+
+  @@index([created_at(sort: Desc)], map: "idx_waitlist_created_at")
 }
 
 model profile_connections {
