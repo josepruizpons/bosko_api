@@ -8,7 +8,7 @@ interface DebugContext {
 /**
  * CLI Debugger - Similar to pdb.set_trace() in Python
  * Usage:
- *   import { breakpoint } from './debugger';
+ * ss  import { breakpoint } from './debugger';
  *   breakpoint({ variable1, variable2 });
  *
  * Commands:
