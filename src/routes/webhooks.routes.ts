@@ -47,6 +47,13 @@ webhooks_router.post(
       return res.status(400).json({ error: 'missing id_user or event' })
     }
 
+    // Local-only live tail: log every publish phase to the bosko-api dev terminal.
+    // In production the AWS Lambda already streams to CloudWatch, so stay quiet.
+    if (process.env.NODE_ENV !== 'production') {
+      const detail = data && Object.keys(data).length ? ` ${JSON.stringify(data)}` : ''
+      console.log(`[publish:event] ${event} track=${id_track} job=${job_id}${detail}`)
+    }
+
     emit_to_user(id_user, event, { id_track, job_id, ts, data })
     return res.status(204).send()
   },

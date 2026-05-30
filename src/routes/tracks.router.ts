@@ -1,6 +1,6 @@
 import express from 'express'
 import crypto from 'crypto'
-import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda'
+import { invoke_publish } from '../publish_invoker';
 import { asyncHandler, generate_id, get_current_user, get_profile } from "../utils";
 import { api_error400, api_error403, api_error404, api_error500 } from '../errors';
 import { db, track_include } from '../db'
@@ -412,14 +412,6 @@ tracks_router.get('/history',
   })
 )
 
-const lambda_client = new LambdaClient({
-  region: process.env.AWS_REGION || 'eu-west-3',
-  credentials: {
-    accessKeyId: process.env.AWS_ID!,
-    secretAccessKey: process.env.AWS_SECRET_KEY!,
-  },
-})
-
 // POST /api/tracks/:id/publish - Trigger async publish via Lambda
 tracks_router.post('/:id/publish',
   asyncHandler(async (req, res) => {
@@ -453,12 +445,13 @@ tracks_router.post('/:id/publish',
     const secret = process.env.LAMBDA_WEBHOOK_SECRET
     if (!secret) return api_error500('LAMBDA_WEBHOOK_SECRET not configured')
 
-    const function_name = process.env.AWS_LAMBDA_PUBLISH_FUNCTION_NAME || 'bosko-publish'
-
     const job_id = crypto.randomUUID()
+    // In local mode the publish handler runs in-process, so it can reach our own
+    // dev server on localhost. DEV_CALLBACK_HOST lets you override (e.g. an ngrok
+    // tunnel) when pointing a real AWS Lambda back at a local backend.
     const callback_url = process.env.NODE_ENV === 'production'
       ? `${PROD_HOSTNAME}/webhooks/lambda-event`
-      : `https://host.docker.internal:3000/webhooks/lambda-event`
+      : `${process.env.DEV_CALLBACK_HOST ?? `https://localhost:${process.env.PORT || 3000}`}/webhooks/lambda-event`
 
     // Read yt_crop_thumbnail option from profile settings
     const profile_for_settings = await db.profiles.findUnique({ where: { id: track.id_profile } })
@@ -487,11 +480,7 @@ tracks_router.post('/:id/publish',
     }
 
     try {
-      await lambda_client.send(new InvokeCommand({
-        FunctionName: function_name,
-        InvocationType: 'Event',
-        Payload: JSON.stringify(payload),
-      }))
+      await invoke_publish(payload)
     } catch (err) {
       // Revert publishing flags on invocation failure
       await db.track.update({

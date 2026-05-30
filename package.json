@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:local": "NODE_EXTRA_CA_CERTS=\"$(mkcert -CAROOT)/rootCA.pem\" BOSKO_PUBLISH_LOCAL_PATH=\"../bosko-publish\" FFMPEG_PATH=\"$(command -v ffmpeg)\" FFPROBE_PATH=\"$(command -v ffprobe)\" tsx watch src/index.ts",
     "dev:debug": "tsx src/index.ts",
     "build": "npx prisma generate && tsc",
     "start": "node dist/index.js",
