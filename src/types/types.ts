@@ -45,6 +45,21 @@ export type Track = {
   genres: string[];
 }
 
+// Lightweight projection for list views (history). Resolves only the cover and
+// never the audio/stem URLs, so it avoids the per-row BeatStars round-trips.
+export type TrackSummary = {
+  id: string;
+  name: string;
+  published_at: Date | null;
+  publish_at: Date;
+  yt_url: string | null;
+  beatstars_url: string | null;
+  beatstars_id_track: string | null;
+  cover_url: string | null;
+  bpm: string | null;
+  musical_key: string | null;
+}
+
 export type Settings = Record<string, string> //TODO:
 
 

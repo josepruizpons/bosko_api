@@ -17,6 +17,7 @@ const asset_select = {
   frame_time: true,
   duration: true,
   source: true,
+  s3_deleted_at: true,
 } as const
 
 export const track_include = {

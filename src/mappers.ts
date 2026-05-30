@@ -2,8 +2,38 @@ import { get_beatstars_token, get_bs_audio_by_id, get_bs_image_by_id, get_bs_mem
 import { getSignedFileUrl } from "./aws";
 import { ASSET_TYPE, PLATFORMS } from "./constants";
 import { DbAsset, DbProfile, DbProfileConnection, DbTrack } from "./types/db_types";
-import { Asset, AssetType, BeatstarsMeta, CropData, Profile, ProfileConnection, Settings, Track, YoutubeMeta } from "./types/types";
+import { Asset, AssetType, BeatstarsMeta, CropData, Profile, ProfileConnection, Settings, Track, TrackSummary, YoutubeMeta } from "./types/types";
 import { compute_track_status } from "./utils";
+
+// Resolve a single cover URL for list views. Prefers the BeatStars-hosted image
+// (survives S3 cleanup); otherwise signs S3 only if the object still exists.
+async function resolve_cover_url(db_track: DbTrack): Promise<string | null> {
+  if (db_track.id_profile === null) return null
+  const cover = db_track.thumbnail ?? db_track.video_loop
+  if (!cover) return null
+
+  if (cover.beatstars_id && cover.type === ASSET_TYPE.THUMBNAIL) {
+    const bs_img = await get_bs_image_by_id(db_track.id_profile, cover.beatstars_id)
+    return bs_img?.signedUrl ?? null
+  }
+
+  if (cover.s3_deleted_at) return null
+  return await getSignedFileUrl(cover.s3_key)
+}
+
+// Lightweight mapper for history/list endpoints — only resolves the cover.
+export const db_track_to_track_summary = async (db_track: DbTrack): Promise<TrackSummary> => ({
+  id: db_track.id,
+  name: db_track.name,
+  published_at: db_track.published_at,
+  publish_at: db_track.publish_at,
+  yt_url: db_track.yt_url,
+  beatstars_url: db_track.beatstars_url,
+  beatstars_id_track: db_track.beatstars_id_track,
+  cover_url: await resolve_cover_url(db_track),
+  bpm: db_track.bpm ?? null,
+  musical_key: db_track.musical_key ?? null,
+})
 
 export const db_track_to_track = async (db_track: DbTrack): Promise<Track> => {
 

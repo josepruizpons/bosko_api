@@ -5,7 +5,8 @@ import { asyncHandler, generate_id, get_current_user, get_profile } from "../uti
 import { api_error400, api_error403, api_error404, api_error500 } from '../errors';
 import { db, track_include } from '../db'
 import { DbTrack } from '../types/db_types';
-import { db_track_to_track } from '../mappers';
+import { db_track_to_track, db_track_to_track_summary } from '../mappers';
+import { get_bs_audio_by_id } from '../api/beatstars-api';
 import { deleteFileFromS3 } from '../aws';
 import { ASSET_TYPE, PROD_HOSTNAME } from '../constants';
 import bs_key_notes_data from '../api/bs_key_notes.json';
@@ -381,7 +382,8 @@ tracks_router.delete('/:id',
   })
 )
 
-// GET /api/tracks/history - List published (archived=false, yt_url != null) tracks for a profile
+// GET /api/tracks/history - Paginated list of published (yt_url != null, not archived)
+// tracks for a profile. Returns lightweight summaries (cover only) for fast lists.
 tracks_router.get('/history',
   asyncHandler(async (req, res) => {
     const user = await get_current_user(req)
@@ -393,22 +395,52 @@ tracks_router.get('/history',
 
     await get_profile(user.id, id_profile)
 
-    const db_tracks: DbTrack[] = await db.track.findMany({
-      where: {
-        id_profile,
-        id_user: user.id,
-        yt_url: { not: null },
-        archived_at: null,
-      },
-      include: track_include,
-      orderBy: [
-        { published_at: 'desc' },
-        { created_at: 'desc' },
-      ],
-    })
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '20'), 10) || 20, 1), 50)
+    const offset = Math.max(parseInt(String(req.query.offset ?? '0'), 10) || 0, 0)
 
-    const tracks = await Promise.all(db_tracks.map(t => db_track_to_track(t)))
-    res.json(tracks)
+    const where = {
+      id_profile,
+      id_user: user.id,
+      yt_url: { not: null },
+      archived_at: null,
+    }
+
+    const [total, db_tracks] = await Promise.all([
+      db.track.count({ where }),
+      db.track.findMany({
+        where,
+        include: track_include,
+        // NULLS LAST so recently published tracks lead and legacy rows without a
+        // published_at fall back to created_at order at the bottom.
+        orderBy: [
+          { published_at: { sort: 'desc', nulls: 'last' } },
+          { created_at: 'desc' },
+        ],
+        skip: offset,
+        take: limit,
+      }),
+    ])
+
+    const items = await Promise.all(db_tracks.map(t => db_track_to_track_summary(t)))
+    res.json({ items, total, has_more: offset + items.length < total })
+  })
+)
+
+// GET /api/tracks/:id/stream - Lazily resolve the BeatStars audio URL for playback.
+tracks_router.get('/:id/stream',
+  asyncHandler(async (req, res) => {
+    const user = await get_current_user(req)
+    const id = req.params.id as string
+
+    const track = await db.track.findUnique({ where: { id }, include: track_include })
+    if (!track) return api_error404('Track not found')
+    if (track.id_user !== user.id) return api_error403('You do not have permission to access this track')
+    if (!track.id_profile || !track.beat?.beatstars_id) return api_error404('No audio available for this track')
+
+    const bs_audio = await get_bs_audio_by_id(track.id_profile, track.beat.beatstars_id)
+    if (!bs_audio?.signedUrl) return api_error404('Audio not available')
+
+    res.json({ url: bs_audio.signedUrl })
   })
 )
 
