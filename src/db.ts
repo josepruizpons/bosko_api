@@ -5,6 +5,7 @@ const connectionString = `${process.env.DATABASE_URL}`
 
 const adapter = new PrismaPg({ connectionString })
 export const db = new PrismaClient({ adapter })
+//test
 
 const asset_select = {
   id: true,
